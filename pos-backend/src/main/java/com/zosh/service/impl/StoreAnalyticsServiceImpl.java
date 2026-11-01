@@ -298,7 +298,7 @@ public class StoreAnalyticsServiceImpl implements StoreAnalyticsService {
         Long storeId = store.getId();
         List<Branch> branches = branchRepository.findByStoreId(storeId);
 
-        Map<Long, ProductDTO> lowStockAlertMap = new LinkedHashMap<>();
+        Map<String, ProductDTO> lowStockAlertMap = new LinkedHashMap<>();
         List<BranchDTO> noSaleToday = new ArrayList<>();
         List<UserDto> inactiveCashiers = new ArrayList<>();
         List<Object> refundSpike = new ArrayList<>();
@@ -322,7 +322,8 @@ public class StoreAnalyticsServiceImpl implements StoreAnalyticsService {
                     if (inv.getProduct() != null && inv.getProduct().getId() != null) {
                         ProductDTO dto = ProductMapper.toDTO(inv.getProduct());
                         dto.setQuantity(inv.getQuantity());
-                        lowStockAlertMap.putIfAbsent(inv.getProduct().getId(), dto);
+                        dto.setName(inv.getProduct().getName() + " (" + branch.getName() + ")");
+                        lowStockAlertMap.put(branch.getId() + "-" + inv.getProduct().getId(), dto);
                     }
                 }
             }

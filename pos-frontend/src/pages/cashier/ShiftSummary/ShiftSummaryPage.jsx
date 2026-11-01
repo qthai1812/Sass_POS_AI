@@ -22,6 +22,7 @@ import {
 } from '../../../Redux Toolkit/features/shiftReport/shiftReportThunks';
 import { logout } from '../../../Redux Toolkit/features/user/userThunks';
 import { useNavigate } from 'react-router';
+import ShiftAiHandoverCard from "@/components/ai/ShiftAiHandoverCard";
 
 const ShiftSummaryPage = () => {
   const dispatch = useDispatch();
@@ -98,6 +99,9 @@ const ShiftSummaryPage = () => {
           <div className="flex justify-center items-center h-full text-lg">Loading shift summary...</div>
         ) : currentShift ? (
           <>
+            <div className="mb-6">
+              <ShiftAiHandoverCard shiftId={currentShift?.id} />
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <ShiftInformationCard shiftData={currentShift} />
               <SalesSummaryCard shiftData={currentShift} />

@@ -42,7 +42,6 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         }
     }
 
-    /** Kiểm tra dữ liệu gói ở phía server (không tin vào validate của form frontend). */
     private void validate(SubscriptionPlanDTO dto) {
         if (dto.getName() == null || dto.getName().isBlank()) {
             throw new IllegalArgumentException("Plan name is required");
@@ -91,6 +90,7 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         if (dto.getActive() != null) {
             plan.setActive(dto.getActive());
         }
+
         plan.setAdvancedReports(flag(dto.getAdvancedReports()));
         plan.setInventory(flag(dto.getInventory()));
         plan.setIntegrations(flag(dto.getIntegrations()));
@@ -98,6 +98,7 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         plan.setInvoiceBranding(flag(dto.getInvoiceBranding()));
         plan.setPrioritySupport(flag(dto.getPrioritySupport()));
         plan.setMultiLocation(flag(dto.getMultiLocation()));
+        plan.setAiCopilot(flag(dto.getAiCopilot()));
         plan.setDescription(dto.getDescription());
         plan.setExtraFeatures(new java.util.ArrayList<>());
 
@@ -153,6 +154,7 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 .invoiceBranding(plan.getInvoiceBranding())
                 .prioritySupport(plan.getPrioritySupport())
                 .multiLocation(plan.getMultiLocation())
+                .aiCopilot(plan.getAiCopilot())
                 .description(plan.getDescription())
                 .createdAt(plan.getCreatedAt())
                 .updatedAt(plan.getUpdatedAt())
@@ -169,13 +171,14 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 .maxUsers(dto.getMaxUsers())
                 .maxProducts(dto.getMaxProducts())
                 .active(dto.getActive() != null ? dto.getActive() : true)
-                .advancedReports(dto.getAdvancedReports())
-                .inventory(dto.getInventory())
-                .integrations(dto.getIntegrations())
-                .ecommerce(dto.getEcommerce())
-                .invoiceBranding(dto.getInvoiceBranding())
-                .prioritySupport(dto.getPrioritySupport())
-                .multiLocation(dto.getMultiLocation())
+                .advancedReports(flag(dto.getAdvancedReports()))
+                .inventory(flag(dto.getInventory()))
+                .integrations(flag(dto.getIntegrations()))
+                .ecommerce(flag(dto.getEcommerce()))
+                .invoiceBranding(flag(dto.getInvoiceBranding()))
+                .prioritySupport(flag(dto.getPrioritySupport()))
+                .multiLocation(flag(dto.getMultiLocation()))
+                .aiCopilot(flag(dto.getAiCopilot()))
                 .description(dto.getDescription())
                 .extraFeatures(new java.util.ArrayList<>())
                 .build();

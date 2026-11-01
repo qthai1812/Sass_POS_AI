@@ -38,6 +38,7 @@ public class SubscriptionPlan {
     private Boolean invoiceBranding;
     private Boolean prioritySupport;
     private Boolean multiLocation;
+    private Boolean aiCopilot;
 
     private String description;
 

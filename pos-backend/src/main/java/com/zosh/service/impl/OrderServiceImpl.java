@@ -326,9 +326,11 @@ public class OrderServiceImpl implements OrderService {
         double configuredTaxRate = (finalBranch.getStore() != null && finalBranch.getStore().getTaxRate() != null)
                 ? Math.max(0.0, finalBranch.getStore().getTaxRate())
                 : DEFAULT_TAX_RATE;
-        double taxAmount = Math.round(subTotal * (configuredTaxRate / 100.0) * 100.0) / 100.0;
+        // Thuế VAT tính trên số tiền sau chiết khấu
+        double taxableAmount = Math.max(0.0, subTotal - discountAmount);
+        double taxAmount = Math.round(taxableAmount * (configuredTaxRate / 100.0) * 100.0) / 100.0;
 
-        double totalAmount = Math.max(0.0, subTotal + taxAmount - discountAmount);
+        double totalAmount = Math.max(0.0, taxableAmount + taxAmount);
 
         order.setItems(orderItems);
         order.setSubTotal(subTotal);

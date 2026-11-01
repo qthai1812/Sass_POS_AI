@@ -23,6 +23,7 @@ import {
   getSalesByCategory,
 } from "@/Redux Toolkit/features/storeAnalytics/storeAnalyticsThunks";
 import { useToast } from "@/components/ui/use-toast";
+import AiBusinessCopilotCard from "@/components/ai/AiBusinessCopilotCard";
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"];
 
@@ -30,6 +31,7 @@ export default function Reports() {
   const dispatch = useDispatch();
   const { toast } = useToast();
   const { userProfile } = useSelector((state) => state.user);
+  const { store } = useSelector((state) => state.store);
   const { monthlySales, salesByCategory, loading } = useSelector(
     (state) => state.storeAnalytics,
   );
@@ -101,6 +103,12 @@ export default function Reports() {
           Reports & Analytics
         </h1>
       </div>
+
+      <AiBusinessCopilotCard
+        mode="STORE"
+        storeAdminId={userProfile?.id}
+        storeId={store?.id || userProfile?.storeId}
+      />
 
       {/* Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

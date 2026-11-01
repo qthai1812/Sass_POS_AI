@@ -31,6 +31,7 @@ public class SubscriptionPlanDTO {
     private Boolean invoiceBranding;
     private Boolean prioritySupport;
     private Boolean multiLocation;
+    private Boolean aiCopilot;
 
     private String description;
     private List<String> extraFeatures;

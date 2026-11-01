@@ -6,13 +6,13 @@ import { Label } from "@/components/ui/label";
 import { User, Save } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const ProfileInput = ({ id, label, value, onChange, disabled }) => (
+const ProfileInput = ({ id, label, value, onChange, disabled, readOnly }) => (
   <div className="space-y-2">
     <Label htmlFor={id}>{label}</Label>
     {disabled ? (
       <Skeleton className="h-10 w-full" />
     ) : (
-      <Input id={id} value={value} onChange={onChange} disabled={disabled} />
+      <Input id={id} value={value} onChange={onChange} disabled={disabled} readOnly={readOnly} />
     )}
   </div>
 );
@@ -45,8 +45,7 @@ const ProfileSettingsForm = ({
             id="email"
             label="Email Address"
             value={profileData.email}
-            // onChange={(e) => onFieldChange("email", e.target.value)}
-            disabled={false}
+            readOnly disabled={loading}
             
           />
           <ProfileInput

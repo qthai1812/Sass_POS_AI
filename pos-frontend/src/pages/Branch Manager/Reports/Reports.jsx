@@ -36,6 +36,7 @@ import {
   getTopCashiersByRevenue,
 } from "@/Redux Toolkit/features/branchAnalytics/branchAnalyticsThunks";
 import { useToast } from "@/components/ui/use-toast";
+import AiBusinessCopilotCard from "@/components/ai/AiBusinessCopilotCard";
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 
@@ -43,6 +44,8 @@ const Reports = () => {
   const dispatch = useDispatch();
   const { toast } = useToast();
   const branchId = useSelector((state) => state.branch.branch?.id);
+  const { userProfile } = useSelector((state) => state.user);
+  const { store } = useSelector((state) => state.store);
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().slice(0, 10),
   );
@@ -193,6 +196,12 @@ const Reports = () => {
           </Button>
         </div>
       </div>
+
+      <AiBusinessCopilotCard
+        mode="BRANCH"
+        branchId={branchId || userProfile?.branchId}
+        storeId={store?.id || userProfile?.storeId}
+      />
 
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>

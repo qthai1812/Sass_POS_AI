@@ -21,15 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Áp dụng quyền lợi của gói cước lên cửa hàng:
- * <ul>
- *   <li>Giới hạn số lượng: maxBranches / maxUsers / maxProducts;</li>
- *   <li>Tính năng cố định bật/tắt theo gói ({@link PlanFeature}).</li>
- * </ul>
- * Cửa hàng chưa có gói ACTIVE còn hạn (hoặc gói không xác định được) được xem là không giới hạn và có mọi tính năng;
- * giá trị giới hạn null hoặc &lt;= 0 cũng được hiểu là không giới hạn.
- */
 @Component
 @RequiredArgsConstructor
 public class PlanLimitChecker {
@@ -73,12 +64,14 @@ public class PlanLimitChecker {
         return limit != null && limit > 0 && current > limit;
     }
 
-    // ───────────────────────── Tính năng ─────────────────────────
-
     public boolean hasFeature(Store store, PlanFeature feature) {
-        if (store == null) return true;
+        if (store == null) return false;
         Optional<SubscriptionPlan> plan = activePlan(store);
-        return plan.isEmpty() || feature.isEnabledIn(plan.get());
+        if (plan.isEmpty()) {
+            // Nếu chưa đăng ký gói hoặc gói hết hạn: khóa chặt AI_COPILOT
+            return feature != PlanFeature.AI_COPILOT;
+        }
+        return feature.isEnabledIn(plan.get());
     }
 
     public void requireFeature(Store store, PlanFeature feature) throws UserException {
@@ -90,14 +83,30 @@ public class PlanLimitChecker {
         }
     }
 
-    // ───────────────────────── Giới hạn số lượng ─────────────────────────
+    /**
+     * Bắt buộc Store phải có gói ACTIVE/TRIAL còn hạn VÀ gói đó phải bật tính năng được yêu cầu.
+     * Dùng cho AI_COPILOT để đảm bảo khi không active gói hoặc gói không bật AI thì cả Store, Branch, Cashier đều không dùng được.
+     */
+    public void requireActivePlanFeature(Store store, PlanFeature feature) throws UserException {
+        if (store == null) {
+            throw new UserException("Store not found for verifying subscription plan.");
+        }
+        Optional<SubscriptionPlan> plan = activePlan(store);
+        if (plan.isEmpty()) {
+            throw new UserException("Cửa hàng chưa có gói đăng ký đang hoạt động. Vui lòng đăng ký gói có tính năng \""
+                    + feature.getLabel() + "\" để sử dụng.");
+        }
+        if (!feature.isEnabledIn(plan.get())) {
+            throw new UserException("Gói hiện tại \"" + plan.get().getName() + "\" không bao gồm tính năng \""
+                    + feature.getLabel() + "\". Vui lòng nâng cấp gói để sử dụng.");
+        }
+    }
 
     public void checkBranchLimit(Store store) throws UserException {
         if (store == null) return;
         Optional<SubscriptionPlan> plan = activePlan(store);
         if (plan.isEmpty()) return;
         long current = branchRepository.countByStoreId(store.getId());
-        // Gói không có Multi-location chỉ được phép có tối đa 1 chi nhánh
         if (!PlanFeature.MULTI_LOCATION.isEnabledIn(plan.get()) && current >= 1) {
             throw new UserException("Your current plan \"" + plan.get().getName() + "\" does not include \""
                     + PlanFeature.MULTI_LOCATION.getLabel() + "\" and allows only 1 branch. "
@@ -129,10 +138,6 @@ public class PlanLimitChecker {
         }
     }
 
-    /**
-     * Chặn đăng ký/chuyển sang gói mới nếu mức sử dụng hiện tại của cửa hàng vượt quá giới hạn của gói đó
-     * (ví dụ hạ cấp xuống gói ít chi nhánh/nhân viên/sản phẩm hơn mức đang dùng).
-     */
     public void assertCanSwitchTo(Store store, SubscriptionPlan target) throws UserException {
         if (store == null || target == null) return;
         long branches = branchRepository.countByStoreId(store.getId());
@@ -158,8 +163,6 @@ public class PlanLimitChecker {
         }
     }
 
-    // ───────────────────────── Quyền lợi hiện hành ─────────────────────────
-
     public PlanEntitlementsDTO entitlements(Store store) {
         Optional<Subscription> activeSub = activeSubscription(store);
         Optional<SubscriptionPlan> plan = activeSub.flatMap(s -> {
@@ -172,15 +175,20 @@ public class PlanLimitChecker {
                 return Optional.empty();
             }
         });
+
         Map<String, Boolean> features = new LinkedHashMap<>();
         for (PlanFeature f : PlanFeature.values()) {
-            features.put(f.getKey(), plan.isEmpty() || f.isEnabledIn(plan.get()));
+            boolean enabled = plan.isPresent()
+                    ? f.isEnabledIn(plan.get())
+                    : (f != PlanFeature.AI_COPILOT);
+            features.put(f.getKey(), enabled);
         }
 
         PlanEntitlementsDTO dto = new PlanEntitlementsDTO();
         dto.setFeatures(features);
         dto.setSubscribed(plan.isPresent());
         activeSub.ifPresent(sub -> dto.setEndDate(sub.getEndDate()));
+
         if (store != null) {
             dto.setStoreId(store.getId());
             dto.setStoreName(store.getBrand());
@@ -188,6 +196,7 @@ public class PlanLimitChecker {
             dto.setUsedProducts((int) productRepository.countByStoreId(store.getId()));
             dto.setUsedUsers((int) userRepository.countByStore(store));
         }
+
         plan.ifPresent(p -> {
             dto.setPlanId(String.valueOf(p.getId()));
             dto.setPlanName(p.getName());
@@ -195,6 +204,7 @@ public class PlanLimitChecker {
             dto.setMaxUsers(p.getMaxUsers() != null && p.getMaxUsers() > 0 ? p.getMaxUsers() : null);
             dto.setMaxProducts(p.getMaxProducts() != null && p.getMaxProducts() > 0 ? p.getMaxProducts() : null);
         });
+
         return dto;
     }
 }

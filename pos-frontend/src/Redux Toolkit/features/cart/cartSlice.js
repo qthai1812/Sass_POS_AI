@@ -17,15 +17,17 @@ const cartSlice = createSlice({
   reducers: {
     addToCart: (state, action) => {
       const product = action.payload;
+      const qtyToAdd = Math.max(1, Number(product.quantityToAdd ?? 1));
       const existingItem = state.items.find((item) => item.id === product.id);
 
       if (existingItem) {
-        existingItem.quantity += 1;
+        existingItem.quantity += qtyToAdd;
       } else {
         const productWithPrice = {
           ...product,
-          quantity: 1,
+          quantity: qtyToAdd,
         };
+        delete productWithPrice.quantityToAdd;
         state.items.push(productWithPrice);
       }
     },
@@ -165,8 +167,10 @@ export const selectTaxRate = (state) => {
 
 export const selectTax = (state) => {
   const subtotal = selectSubtotal(state);
+  const discountAmount = selectDiscountAmount(state);
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
   const taxRate = selectTaxRate(state);
-  return subtotal * (taxRate / 100);
+  return Math.round(taxableAmount * (taxRate / 100) * 100) / 100;
 };
 
 export const selectDiscountAmount = (state) => {
@@ -189,8 +193,8 @@ export const selectDiscountAmount = (state) => {
   ) {
     return 0;
   }
-  if (discount.type === "percentage") {
-    return Math.min(subtotal, subtotal * (discount.value / 100));
+  if (String(discount.type || "").toLowerCase() === "percentage") {
+    return Math.min(subtotal, subtotal * (Number(discount.value) / 100));
   } else {
     return Math.min(subtotal, Number(discount.value) || 0);
   }
