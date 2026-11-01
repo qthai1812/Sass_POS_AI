@@ -55,7 +55,7 @@ public class CustomerServiceImpl implements CustomerService {
         if (currentStore == null) {
             throw new AccessDeniedException("You do not belong to any active store");
         }
-        if (customer.getStore() != null && !customer.getStore().getId().equals(currentStore.getId())) {
+        if (customer.getStore() == null || !customer.getStore().getId().equals(currentStore.getId())) {
             throw new AccessDeniedException("You do not have permission to access this customer");
         }
     }

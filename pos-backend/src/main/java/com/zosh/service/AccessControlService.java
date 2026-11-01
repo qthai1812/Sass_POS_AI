@@ -81,11 +81,14 @@ public class AccessControlService {
 
     /** Quyền quản lý (sửa/xóa/hủy): Admin, cấp cửa hàng, hoặc BRANCH_MANAGER của chính chi nhánh đó. */
     public boolean canManageBranch(User user, Branch branch) {
-        if (user == null || branch == null) {
+        if (user == null) {
             return false;
         }
         if (user.getRole() == UserRole.ROLE_ADMIN) {
             return true;
+        }
+        if (branch == null) {
+            return false;
         }
         if (isStoreLevelUser(user, branch.getStore())) {
             return true;

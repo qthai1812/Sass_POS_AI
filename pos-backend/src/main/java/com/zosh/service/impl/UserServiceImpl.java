@@ -137,6 +137,12 @@ public class UserServiceImpl implements UserService {
             if (currentUser.getRole() == UserRole.ROLE_ADMIN) {
                 return userRepository.findAll();
             }
+            // Quản lý chi nhánh / Thu ngân: chỉ được xem nhân sự trong đúng chi nhánh của mình
+            if ((currentUser.getRole() == UserRole.ROLE_BRANCH_MANAGER
+                    || currentUser.getRole() == UserRole.ROLE_BRANCH_CASHIER)
+                    && currentUser.getBranch() != null) {
+                return userRepository.findByBranchId(currentUser.getBranch().getId());
+            }
             Store effectiveStore = resolveEffectiveStore(currentUser);
             if (effectiveStore != null) {
                 return userRepository.findByStore(effectiveStore);

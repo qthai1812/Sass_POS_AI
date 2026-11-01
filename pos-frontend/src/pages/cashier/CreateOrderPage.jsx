@@ -24,6 +24,7 @@ import {
 import { getStoreByEmployee } from "../../Redux Toolkit/features/store/storeThunks";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import SmartPosAssistantBar from "@/components/ai/SmartPosAssistantBar";
 
 const CreateOrderPage = () => {
   const dispatch = useDispatch();
@@ -133,6 +134,9 @@ const CreateOrderPage = () => {
           </Button>
         </div>
       )}
+
+      {/* Smart POS Assistant Bar (AI Quick Order & Cross-sell) */}
+      <SmartPosAssistantBar />
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
         {/* Cột 1: Danh sách sản phẩm */}

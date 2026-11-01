@@ -38,6 +38,7 @@ import {
   MapPin,
   Plus,
   CreditCard,
+  Sparkles,
 } from "lucide-react";
 
 const FEATURE_FLAGS = [
@@ -75,6 +76,11 @@ const FEATURE_FLAGS = [
     key: "multiLocation",
     label: "Multi-location",
     icon: <MapPin className="w-4 h-4 text-cyan-500" />,
+  },
+  {
+    key: "aiCopilot",
+    label: "AI Copilot & Smart POS",
+    icon: <Sparkles className="w-4 h-4 text-indigo-500" />,
   },
 ];
 

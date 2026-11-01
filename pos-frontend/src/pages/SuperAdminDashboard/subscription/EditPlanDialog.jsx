@@ -65,6 +65,11 @@ const FEATURE_FIELDS = [
     label: "Multi-location",
     hint: "More than 1 branch per store",
   },
+  {
+    key: "aiCopilot",
+    label: "AI Copilot & Smart POS",
+    hint: "AI Insights, Smart Restock, Voice Order & Cross-sell",
+  },
 ];
 
 const validationSchema = Yup.object().shape({
@@ -96,6 +101,7 @@ const validationSchema = Yup.object().shape({
   invoiceBranding: Yup.boolean().required(),
   prioritySupport: Yup.boolean().required(),
   multiLocation: Yup.boolean().required(),
+  aiCopilot: Yup.boolean().required(),
 });
 
 const FeaturesSwitchGrid = memo(({ handleFeatureSwitch }) => (
@@ -139,6 +145,7 @@ const getInitialValues = (plan) => {
     invoiceBranding: plan.invoiceBranding ?? plan.enableInvoiceBranding ?? false,
     prioritySupport: plan.prioritySupport ?? false,
     multiLocation: plan.multiLocation ?? plan.enableMultiLocation ?? false,
+    aiCopilot: plan.aiCopilot ?? false,
   };
 };
 

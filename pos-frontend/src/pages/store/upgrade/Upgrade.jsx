@@ -51,6 +51,7 @@ const PLAN_FEATURES = [
   { key: "integrations", label: "Integrations" },
   { key: "ecommerce", label: "eCommerce" },
   { key: "prioritySupport", label: "Priority Support" },
+  { key: "aiCopilot", label: "AI Copilot & Smart POS" },
 ];
 const formatCardNumberInput = (val) => {
   const digits = String(val || "").replace(/\D/g, "").slice(0, 16);
@@ -388,6 +389,16 @@ const Upgrade = () => {
           `Ngân hàng xác nhận thành công (${updated.transactionId}). Đang kích hoạt gói cước...`,
         );
         await finalizeSubscriptionActivation(updated);
+      } else {
+        setActionLoading(false);
+        setCardStepText("");
+        toast({
+          title: "Cổng thanh toán Thẻ từ chối giao dịch",
+          description:
+            updated?.providerMessage ||
+            "Thông tin thẻ không hợp lệ hoặc bị ngân hàng từ chối.",
+          variant: "destructive",
+        });
       }
     } catch (err) {
       const failed = err?.response?.data;

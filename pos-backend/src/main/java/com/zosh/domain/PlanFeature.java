@@ -4,10 +4,6 @@ import com.zosh.modal.SubscriptionPlan;
 
 import java.util.function.Function;
 
-/**
- * Danh sách tính năng CỐ ĐỊNH của gói cước. Super Admin chỉ bật/tắt các tính năng này cho từng gói,
- * không tạo thêm tính năng mới. Mỗi tính năng ánh xạ tới một cờ boolean trong {@link SubscriptionPlan}.
- */
 public enum PlanFeature {
     ADVANCED_REPORTS("advancedReports", "Advanced Reports", SubscriptionPlan::getAdvancedReports),
     INVENTORY("inventory", "Inventory System", SubscriptionPlan::getInventory),
@@ -15,7 +11,8 @@ public enum PlanFeature {
     ECOMMERCE("ecommerce", "eCommerce", SubscriptionPlan::getEcommerce),
     INVOICE_BRANDING("invoiceBranding", "Invoice Branding", SubscriptionPlan::getInvoiceBranding),
     PRIORITY_SUPPORT("prioritySupport", "Priority Support", SubscriptionPlan::getPrioritySupport),
-    MULTI_LOCATION("multiLocation", "Multi-location", SubscriptionPlan::getMultiLocation);
+    MULTI_LOCATION("multiLocation", "Multi-location", SubscriptionPlan::getMultiLocation),
+    AI_COPILOT("aiCopilot", "AI Copilot & Smart POS", SubscriptionPlan::getAiCopilot);
 
     private final String key;
     private final String label;
@@ -35,7 +32,6 @@ public enum PlanFeature {
         return label;
     }
 
-    /** Gói có bật tính năng này hay không (giá trị null được xem là tắt). */
     public boolean isEnabledIn(SubscriptionPlan plan) {
         return plan != null && Boolean.TRUE.equals(reader.apply(plan));
     }
