@@ -41,6 +41,11 @@ public class FileService {
             throw new IllegalArgumentException("File size exceeds maximum limit of 5MB");
         }
 
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
+            throw new IllegalArgumentException("Invalid file content type. Only image files are allowed");
+        }
+
         String rawName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "";
         String originalFileName = StringUtils.cleanPath(rawName);
         String fileExtension = "";

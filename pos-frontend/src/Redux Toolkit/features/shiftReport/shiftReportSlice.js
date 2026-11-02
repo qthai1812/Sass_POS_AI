@@ -176,18 +176,17 @@ const shiftReportSlice = createSlice({
       })
       .addCase(deleteShift.fulfilled, (state, action) => {
         state.loading = false;
-        // Remove the deleted shift from all arrays
-        state.shifts = state.shifts.filter(shift => shift.id !== action.payload);
-        state.shiftsByCashier = state.shiftsByCashier.filter(shift => shift.id !== action.payload);
-        state.shiftsByBranch = state.shiftsByBranch.filter(shift => shift.id !== action.payload);
+        const deletedId = Number(action.payload);
+        const keepNotDeleted = (shift) => Number(shift?.id) !== deletedId;
+        state.shifts = (state.shifts || []).filter(keepNotDeleted);
+        state.shiftsByCashier = (state.shiftsByCashier || []).filter(keepNotDeleted);
+        state.shiftsByBranch = (state.shiftsByBranch || []).filter(keepNotDeleted);
         
-        // Clear selected shift if it was the deleted one
-        if (state.selectedShift && state.selectedShift.id === action.payload) {
+        if (state.selectedShift && Number(state.selectedShift.id) === deletedId) {
           state.selectedShift = null;
         }
         
-        // Clear current shift if it was the deleted one
-        if (state.currentShift && state.currentShift.id === action.payload) {
+        if (state.currentShift && Number(state.currentShift.id) === deletedId) {
           state.currentShift = null;
         }
       })

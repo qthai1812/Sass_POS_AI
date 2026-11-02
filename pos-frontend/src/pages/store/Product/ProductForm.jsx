@@ -160,6 +160,7 @@ const ProductForm = ({
                     alt={`ProductImage`}
                   />
                   <Button
+                    type="button"
                     onClick={() => {
                       setFieldValue("image", null)
                       console.log("handle remove image")

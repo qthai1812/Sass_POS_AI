@@ -69,11 +69,45 @@ export default function Coupons() {
   }, [error, toast, dispatch]);
 
   const handleSubmit = async (e) => {
+    const cleanCode = formData.code ? formData.code.trim().toUpperCase() : "";
+    if (cleanCode.startsWith("POINTS")) {
+      toast({
+        title: "Mã không hợp lệ",
+        description: "Mã bắt đầu bằng 'POINTS' được dành riêng cho hệ thống tích điểm.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const val = Number(formData.discountValue);
+    if (val <= 0 || (formData.discountType === "PERCENTAGE" && val > 100)) {
+      toast({
+        title: "Giá trị giảm không hợp lệ",
+        description:
+          formData.discountType === "PERCENTAGE"
+            ? "Phần trăm giảm giá phải từ 1% đến 100%."
+            : "Số tiền giảm giá phải lớn hơn 0.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (
+      formData.validFrom &&
+      formData.validUntil &&
+      new Date(formData.validFrom) >= new Date(formData.validUntil)
+    ) {
+      toast({
+        title: "Thời gian không hợp lệ",
+        description: "Ngày kết thúc (Valid Until) phải sau ngày bắt đầu (Valid From).",
+        variant: "destructive",
+      });
+      return;
+    }
     e.preventDefault();
     const payload = {
       ...formData,
       storeId: store.id,
-      discountValue: Number(formData.discountValue),
+      code: cleanCode,
+      discountValue: val,
       minOrderValue: formData.minOrderValue
         ? Number(formData.minOrderValue)
         : null,
@@ -195,6 +229,8 @@ export default function Coupons() {
                   <label className="text-sm font-medium">Value</label>
                   <Input
                     type="number"
+                    min="1"
+                    max={formData.discountType === "PERCENTAGE" ? 100 : undefined}
                     value={formData.discountValue}
                     onChange={(e) =>
                       setFormData({

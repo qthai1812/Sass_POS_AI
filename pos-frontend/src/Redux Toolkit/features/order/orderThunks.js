@@ -265,3 +265,24 @@ export const getRecentOrdersByBranch = createAsyncThunk(
     }
   }
 );
+
+
+// Update Order Status (PENDING -> COMPLETED / CANCELLED)
+export const updateOrderStatus = createAsyncThunk(
+  'order/updateStatus',
+  async ({ id, status }, { rejectWithValue }) => {
+    try {
+      const headers = getAuthHeaders();
+      const res = await api.put(
+        `/api/orders/${id}/status?status=${encodeURIComponent(status)}`,
+        {},
+        { headers }
+      );
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || 'Không thể cập nhật trạng thái đơn hàng'
+      );
+    }
+  }
+);

@@ -10,6 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Search, FileText, ArrowUpDown } from "lucide-react";
+import OrderActionButtons from "@/components/OrderActionButtons";
 
 const OrdersTable = ({
   orders = [],
@@ -141,6 +142,7 @@ const OrdersTable = ({
                   >
                     <FileText className="h-4 w-4" />
                   </Button>
+                  <OrderActionButtons order={order} />
                 </div>
               </TableCell>
             </TableRow>

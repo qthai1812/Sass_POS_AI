@@ -50,6 +50,14 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT o FROM Order o WHERE o.branch.store.id = :storeId")
     List<Order> findAllByStoreIdWithDetails(@Param("storeId") Long storeId);
 
+    @EntityGraph(attributePaths = {"items", "items.product", "items.product.category", "cashier", "customer", "branch"})
+    @Query("SELECT o FROM Order o WHERE o.branch.store.id = :storeId AND o.createdAt BETWEEN :from AND :to")
+    List<Order> findByStoreIdAndCreatedAtBetween(
+            @Param("storeId") Long storeId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to
+    );
+
     @Query("""
             SELECT COALESCE(SUM(o.totalAmount), 0.0) - (
                 SELECT COALESCE(SUM(r.amount), 0.0)

@@ -17,6 +17,9 @@ const ProductTable = ({ products = [], loading, onEdit, onView }) => {
   const dispatch = useDispatch();
 
   const handleDeleteProduct = async (id) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa sản phẩm này? Toàn bộ tồn kho của sản phẩm cũng sẽ bị xóa.")) {
+      return;
+    }
     try {
       const token = localStorage.getItem("jwt");
       await dispatch(deleteProduct({ id, token })).unwrap();
@@ -30,21 +33,22 @@ const ProductTable = ({ products = [], loading, onEdit, onView }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <Table>
-        <TableHeader>
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-[80px]">ID</TableHead>
+          <TableHead className="w-[80px]">Image</TableHead>
+          <TableHead>Product</TableHead>
+          <TableHead>Category</TableHead>
+          <TableHead>Price</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {loading ? (
           <TableRow>
-            <TableHead>Image</TableHead>
-            <TableHead>Product</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead>Price</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow>
-            <TableCell colSpan={5} className="text-center py-8">
+            <TableCell colSpan={6} className="text-center py-8">
               <div className="flex justify-center items-center">
                 <svg
                   className="animate-spin h-6 w-6 text-emerald-600 mr-2"
@@ -70,116 +74,84 @@ const ProductTable = ({ products = [], loading, onEdit, onView }) => {
               </div>
             </TableCell>
           </TableRow>
-        </TableBody>
-      </Table>
-    );
-  }
-
-  if (!products || products.length === 0) {
-    return (
-      <Table>
-        <TableHeader>
+        ) : !products || products.length === 0 ? (
           <TableRow>
-            <TableHead>Product</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead>Price</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow>
-            <TableCell colSpan={4} className="text-center py-8">
+            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
               No products found. Add your first product to get started.
             </TableCell>
           </TableRow>
-        </TableBody>
-      </Table>
-    );
-  }
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>ID</TableHead>
-          <TableHead>Image</TableHead>
-          <TableHead>Product</TableHead>
-          <TableHead>Category</TableHead>
-          <TableHead>Price</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {products.map((product) => (
-          <TableRow key={product.id}>
-            <TableCell>#{product.id}</TableCell>
-            <TableCell>
-              {product.image && (
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="w-12 h-12 object-cover rounded-md"
-                />
-              )}
-            </TableCell>
-            <TableCell>
-              <div className="space-y-1">
-                <div className="font-medium">
-                  {product.name ? product.name.slice(0, 70) : "Unnamed Product"}
+        ) : (
+          products.map((product) => (
+            <TableRow key={product.id}>
+              <TableCell className="font-mono text-xs">#{product.id}</TableCell>
+              <TableCell>
+                {product.image && (
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                    className="w-12 h-12 object-cover rounded-md"
+                  />
+                )}
+              </TableCell>
+              <TableCell>
+                <div className="space-y-1">
+                  <div className="font-medium">
+                    {product.name ? product.name.slice(0, 70) : "Unnamed Product"}
+                  </div>
+                  <div className="text-sm text-muted-foreground truncate max-w-xs">
+                    {product.description || "No description"}
+                  </div>
                 </div>
-                <div className="text-sm text-muted-foreground truncate max-w-xs">
-                  {product.description || "No description"}
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-1">
+                  <Tag className="h-4 w-4 text-muted-foreground" />
+                  {typeof product.category === "object"
+                    ? product.category?.name || "Uncategorized"
+                    : product.category || "Uncategorized"}
                 </div>
-              </div>
-            </TableCell>
-            <TableCell>
-              <div className="flex items-center gap-1">
-                <Tag className="h-4 w-4 text-muted-foreground" />
-                {typeof product.category === "object"
-                  ? product.category?.name || "Uncategorized"
-                  : product.category || "Uncategorized"}
-              </div>
-            </TableCell>
-            <TableCell>
-              <div className="flex items-center gap-1">
-                <DollarSign className="h-4 w-4 text-muted-foreground" />đ
-                {Number(
-                  product.sellingPrice ?? product.price ?? 0,
-                ).toLocaleString()}
-              </div>
-            </TableCell>
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-1">
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />đ
+                  {Number(
+                    product.sellingPrice ?? product.price ?? 0,
+                  ).toLocaleString()}
+                </div>
+              </TableCell>
 
-            <TableCell className="text-right">
-              <div className="flex justify-end gap-2">
-                {onView && (
+              <TableCell className="text-right">
+                <div className="flex justify-end gap-2">
+                  {onView && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-blue-500 border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+                      onClick={() => onView(product)}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
-                    className="text-blue-500 border-blue-200 hover:bg-blue-50 hover:text-blue-600"
-                    onClick={() => onView(product)}
+                    onClick={() => onEdit(product)}
                   >
-                    <Eye className="h-4 w-4" />
+                    <Edit className="h-4 w-4" />
                   </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onEdit(product)}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600"
-                  onClick={() => handleDeleteProduct(product.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600"
+                    onClick={() => handleDeleteProduct(product.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))
+        )}
       </TableBody>
     </Table>
   );

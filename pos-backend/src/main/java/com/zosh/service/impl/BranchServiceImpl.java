@@ -139,6 +139,14 @@ public class BranchServiceImpl implements BranchService {
         User currentUser = userService.getCurrentUser();
         validateStoreAdminOrManager(currentUser, existing.getStore());
 
+        List<Order> existingOrders = orderRepository.findByBranchId(id);
+        if (!existingOrders.isEmpty()) {
+            throw new com.zosh.exceptions.UserException(
+                "Chi nhánh này đã phát sinh " + existingOrders.size() + 
+                " đơn hàng trong lịch sử. Không thể xóa vĩnh viễn để bảo toàn dữ liệu kế toán của cửa hàng."
+            );
+        }
+
         // Unlink employees assigned to this branch and suspend login for branch-scoped roles until reassigned
         List<User> branchUsers = userRepository.findByBranchId(id);
         for (User u : branchUsers) {

@@ -26,6 +26,7 @@ import {
 import AddPlanDialog from "./AddPlanDialog";
 import { Switch } from "../../../components/ui/switch";
 import EditPlanDialog from "./EditPlanDialog";
+import StoreSubscriptionsTable from "./StoreSubscriptionsTable";
 import {
   Edit,
   Trash2,
@@ -337,6 +338,7 @@ const SubscriptionPlansPage = () => {
         </Table>
       </div>
       {error && <div className="text-red-500 mt-4">{error}</div>}
+      <StoreSubscriptionsTable />
     </div>
   );
 };

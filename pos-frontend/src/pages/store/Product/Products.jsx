@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { getProductsByStore } from "@/Redux Toolkit/features/product/productThunks";
 import { toast } from "@/components/ui/use-toast";
+import usePlanEntitlements from "@/hooks/usePlanEntitlements";
 import ProductTable from "./ProductTable";
 import ProductForm from "./ProductForm";
 import ProductSearch from "./ProductSearch";
@@ -31,6 +32,10 @@ export default function Products() {
   const [displayedProducts, setDisplayedProducts] = useState([]);
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const { entitlements, refresh: refreshEntitlements } = usePlanEntitlements();
+  const isProductLimitReached =
+    entitlements?.maxProducts != null &&
+    entitlements?.usedProducts >= entitlements?.maxProducts;
 
   const fetchProducts = useCallback(async () => {
     if (!store?.id) return;
@@ -55,7 +60,7 @@ export default function Products() {
   // Update displayed products when products or search results change
   useEffect(() => {
     setDisplayedProducts(
-      isSearchActive && searchResults.length > 0 ? searchResults : products,
+      isSearchActive ? (searchResults || []) : (products || []),
     );
   }, [products, searchResults, isSearchActive]);
 
@@ -68,6 +73,7 @@ export default function Products() {
 
   const handleAddProductSuccess = () => {
     setIsAddDialogOpen(false);
+    refreshEntitlements();
   };
 
   const handleEditProductSuccess = () => {
@@ -103,8 +109,14 @@ export default function Products() {
         </h1>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-700">
-              <Plus className="mr-2 h-4 w-4" /> Add Product
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              disabled={isProductLimitReached}
+              title={isProductLimitReached ? "Đã đạt giới hạn sản phẩm của gói cước" : ""}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Product
+              {entitlements?.maxProducts ? ` (${entitlements.usedProducts}/${entitlements.maxProducts})` : ""}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto p-10">

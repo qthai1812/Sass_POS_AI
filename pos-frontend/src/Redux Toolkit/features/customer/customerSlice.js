@@ -5,6 +5,7 @@ import {
   deleteCustomer,
   getCustomerById,
   getAllCustomers,
+  searchCustomers,
 } from "./customerThunks";
 import { createOrder } from "../order/orderThunks";
 
@@ -110,6 +111,19 @@ const customerSlice = createSlice({
         state.customers = action.payload;
       })
       .addCase(getAllCustomers.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+
+      // Search Customers
+      .addCase(searchCustomers.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(searchCustomers.fulfilled, (state, action) => {
+        state.loading = false;
+        state.customers = action.payload;
+      })
+      .addCase(searchCustomers.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })

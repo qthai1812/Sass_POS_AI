@@ -56,7 +56,12 @@ const productSlice = createSlice({
       })
 
       .addCase(deleteProduct.fulfilled, (state, action) => {
-        state.products = state.products.filter((p) => p.id !== action.payload);
+        const deletedId = Number(action.payload);
+        state.products = (state.products || []).filter((p) => Number(p?.id) !== deletedId);
+        state.searchResults = (state.searchResults || []).filter((p) => Number(p?.id) !== deletedId);
+        if (state.product && Number(state.product.id) === deletedId) {
+          state.product = null;
+        }
       })
 
       .addCase(getProductsByStore.fulfilled, (state, action) => {

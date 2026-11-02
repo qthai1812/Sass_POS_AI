@@ -7,7 +7,8 @@ import {
   getTodayOrdersByBranch,
   deleteOrder,
   getOrdersByCustomer,
-  getRecentOrdersByBranch
+  getRecentOrdersByBranch,
+  updateOrderStatus,
 } from './orderThunks';
 
 const initialState = {
@@ -42,8 +43,12 @@ const orderSlice = createSlice({
       })
       .addCase(createOrder.fulfilled, (state, action) => {
         state.loading = false;
-        state.orders.push(action.payload);
-        state.selectedOrder=action.payload;
+        if (action.payload) {
+          state.orders = [action.payload, ...(state.orders || [])];
+          state.todayOrders = [action.payload, ...(state.todayOrders || [])];
+          state.recentOrders = [action.payload, ...(state.recentOrders || [])].slice(0, 5);
+        }
+        state.selectedOrder = action.payload;
       })
       .addCase(createOrder.rejected, (state, action) => {
         state.loading = false;
@@ -76,7 +81,40 @@ const orderSlice = createSlice({
       })
 
       .addCase(deleteOrder.fulfilled, (state, action) => {
-        state.orders = state.orders.filter((o) => o.id !== action.payload);
+        const deletedId = Number(action.payload);
+        const keepNotDeleted = (o) => Number(o?.id) !== deletedId;
+
+        state.orders = (state.orders || []).filter(keepNotDeleted);
+        state.todayOrders = (state.todayOrders || []).filter(keepNotDeleted);
+        state.customerOrders = (state.customerOrders || []).filter(keepNotDeleted);
+        state.recentOrders = (state.recentOrders || []).filter(keepNotDeleted);
+
+        if (state.selectedOrder && Number(state.selectedOrder.id) === deletedId) {
+          state.selectedOrder = null;
+        }
+      })
+
+      .addCase(updateOrderStatus.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateOrderStatus.fulfilled, (state, action) => {
+        state.loading = false;
+        const updated = action.payload;
+        const replaceOrder = (list) =>
+          list.map((o) => (o.id === updated.id ? updated : o));
+
+        state.orders = replaceOrder(state.orders);
+        state.todayOrders = replaceOrder(state.todayOrders);
+        state.customerOrders = replaceOrder(state.customerOrders);
+        state.recentOrders = replaceOrder(state.recentOrders);
+        if (state.selectedOrder?.id === updated.id) {
+          state.selectedOrder = updated;
+        }
+      })
+      .addCase(updateOrderStatus.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       })
 
       .addMatcher(

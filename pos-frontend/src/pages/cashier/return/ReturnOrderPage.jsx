@@ -26,13 +26,17 @@ const ReturnOrderPage = () => {
 
   const dispatch = useDispatch();
   const { branch } = useSelector((state) => state.branch);
+  const { userProfile } = useSelector((state) => state.user);
+
+  const resolvedBranchId =
+    branch?.id || userProfile?.branchId || userProfile?.branch?.id;
 
   useEffect(() => {
-    if (branch?.id) {
-      dispatch(getOrdersByBranch({ branchId: branch.id }));
-      dispatch(getRefundsByBranch(branch.id));
+    if (resolvedBranchId) {
+      dispatch(getOrdersByBranch({ branchId: resolvedBranchId }));
+      dispatch(getRefundsByBranch(resolvedBranchId));
     }
-  }, [dispatch, branch?.id]);
+  }, [dispatch, resolvedBranchId]);
 
   const handleSelectOrder = (order) => {
     setSelectedOrder(order);

@@ -176,7 +176,6 @@ export const selectTax = (state) => {
 export const selectDiscountAmount = (state) => {
   const subtotal = selectSubtotal(state);
   if (subtotal <= 0) return 0;
-
   if (state.cart.couponCode === "POINTS") {
     const pts = Math.max(
       0,
@@ -184,7 +183,6 @@ export const selectDiscountAmount = (state) => {
     );
     return pts > 0 ? Math.min(pts, Math.floor(subtotal / 1000)) * 1000 : 0;
   }
-
   const discount = state.cart.discount;
   if (!discount || !discount.value) return 0;
   if (
@@ -193,11 +191,23 @@ export const selectDiscountAmount = (state) => {
   ) {
     return 0;
   }
+
+  let rawDiscount = 0;
   if (String(discount.type || "").toLowerCase() === "percentage") {
-    return Math.min(subtotal, subtotal * (Number(discount.value) / 100));
+    rawDiscount = Math.min(subtotal, subtotal * (Number(discount.value) / 100));
   } else {
-    return Math.min(subtotal, Number(discount.value) || 0);
+    rawDiscount = Math.min(subtotal, Number(discount.value) || 0);
   }
+
+  // Nếu là Thu ngân (ROLE_BRANCH_CASHIER) giảm giá trực tiếp không qua mã Coupon -> giới hạn tối đa 10%
+  const isCashier = state.user?.userProfile?.role === "ROLE_BRANCH_CASHIER";
+  const hasCoupon = Boolean(state.cart.couponCode && state.cart.couponCode.trim());
+  if (isCashier && !hasCoupon) {
+    const maxCashierManualDiscount = Math.round(subtotal * 0.1);
+    return Math.min(rawDiscount, maxCashierManualDiscount);
+  }
+
+  return rawDiscount;
 };
 
 export const selectTotal = (state) => {

@@ -18,4 +18,5 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
     List<Subscription> findByEndDateBeforeAndStatusIn(LocalDateTime date, Collection<SubscriptionStatus> statuses);
     boolean existsByTransactionId(String transactionId);
     long countByStatus(SubscriptionStatus status);
+    boolean existsByPlanIdAndStatusIn(String planId, Collection<SubscriptionStatus> statuses);
 }

@@ -51,6 +51,30 @@ export default function StoreDashboard({ children }) {
     );
   }
 
+  if (store?.status === "BLOCKED") {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background p-4">
+        <div className="max-w-md p-8 bg-card border border-red-200 rounded-xl shadow-lg text-center">
+          <h2 className="text-2xl font-bold text-red-600 mb-2">
+            Cửa hàng đã bị Tạm khóa (Blocked)
+          </h2>
+          <p className="text-muted-foreground mb-6">
+            Cửa hàng "{store?.brand}" hiện đang bị khóa bởi Quản trị viên hệ thống (Super Admin). Vui lòng liên hệ bộ phận hỗ trợ.
+          </p>
+          <button
+            onClick={() => {
+              localStorage.clear();
+              window.location.href = "/auth/login";
+            }}
+            className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+          >
+            Quay lại Đăng nhập
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-gradient-to-br from-primary/5 via-background to-primary/10">
       <div className="hidden lg:flex shrink-0">

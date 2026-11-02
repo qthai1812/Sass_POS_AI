@@ -60,8 +60,8 @@ public class AuthServiceImpl implements AuthService {
         if (userDto == null || userDto.getEmail() == null || userDto.getEmail().trim().isEmpty()) {
             throw new UserException("Email is required");
         }
-        if (userDto.getPassword() == null || userDto.getPassword().trim().isEmpty()) {
-            throw new UserException("Password is required");
+        if (userDto.getPassword() == null || userDto.getPassword().trim().length() < 6) {
+            throw new UserException("Password must be at least 6 characters");
         }
         if (userDto.getFullName() == null || userDto.getFullName().trim().isEmpty()) {
             throw new UserException("Full name is required");

@@ -19,4 +19,7 @@ public interface InventoryService {
 
     /** Hoàn trả tồn kho khi refund (có pessimistic lock). */
     void restoreInventory(Long productId, Long branchId, int quantity) throws Exception;
+
+    /** Chuyển tồn kho nội bộ giữa 2 chi nhánh thuộc cùng 1 Store (có Pessimistic Lock). */
+    void transferInventory(Long productId, Long fromBranchId, Long toBranchId, int quantity) throws Exception;
 }

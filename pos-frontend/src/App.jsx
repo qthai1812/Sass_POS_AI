@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Routes, Route, Navigate } from "react-router";
+import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useDispatch, useSelector } from "react-redux";
 import AuthRoutes from "./routes/AuthRoutes";
 import StoreRoutes from "./routes/StoreRoutes";
@@ -8,7 +8,6 @@ import { getUserProfile } from "./Redux Toolkit/features/user/userThunks";
 import { clearUserState } from "./Redux Toolkit/features/user/userSlice";
 import Landing from "./pages/common/Landing/Landing";
 import CashierRoutes from "./routes/CashierRoutes";
-import Onboarding from "./pages/onboarding/Onboarding";
 import {
   getStoreByAdmin,
   getStoreByEmployee,
@@ -21,11 +20,13 @@ import { Ban, Clock, RefreshCw, LogOut } from "lucide-react";
 
 const App = () => {
   const dispatch = useDispatch();
+  const location = useLocation();
   const { userProfile, loading: userLoading } = useSelector(
     (state) => state.user,
   );
   const { store, loading: storeLoading } = useSelector((state) => state.store);
   const [storeChecked, setStoreChecked] = useState(false);
+  const isOnboarding = location.pathname.includes("/onboarding");
 
   useEffect(() => {
     localStorage.removeItem("pos_employee_access_overrides");
@@ -99,7 +100,8 @@ const App = () => {
     }
 
     // All store and branch roles must wait until their store status is verified
-    if (!storeChecked || (storeLoading && !store?.id)) {
+    // Do not block onboarding or store creation for new store admins who do not have a store yet
+    if (!isOnboarding && (!storeChecked || (storeLoading && !store?.id))) {
       return (
         <div className="flex items-center justify-center min-h-screen">
           Loading store...
@@ -264,7 +266,7 @@ const App = () => {
               path="/"
               element={<Navigate to="/auth/onboarding" replace />}
             />
-            <Route path="/auth/onboarding" element={<Onboarding />} />
+            <Route path="/auth/*" element={<AuthRoutes />} />
             <Route
               path="*"
               element={<Navigate to="/auth/onboarding" replace />}

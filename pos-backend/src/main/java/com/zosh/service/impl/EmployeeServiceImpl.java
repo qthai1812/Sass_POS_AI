@@ -70,6 +70,36 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (role == UserRole.ROLE_ADMIN) {
             throw new Exception("Cannot assign ROLE_ADMIN privilege to an employee");
         }
+        User currentUser = userService.getCurrentUser();
+        if (currentUser != null
+                && currentUser.getRole() != UserRole.ROLE_ADMIN
+                && currentUser.getRole() != UserRole.ROLE_STORE_ADMIN
+                && role == UserRole.ROLE_STORE_ADMIN) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Only Store Owner (ROLE_STORE_ADMIN) or Super Admin can assign ROLE_STORE_ADMIN"
+            );
+        }
+    }
+
+    private void assertCanModifyTargetEmployee(User currentUser, User targetEmployee) throws Exception {
+        if (currentUser == null || targetEmployee == null) {
+            return;
+        }
+        if (currentUser.getRole() == UserRole.ROLE_ADMIN) {
+            return;
+        }
+        Store ownedStore = storeRepository.findByStoreAdminId(targetEmployee.getId());
+        boolean isTargetStoreOwner = ownedStore != null || targetEmployee.getRole() == UserRole.ROLE_STORE_ADMIN;
+        if (isTargetStoreOwner && !currentUser.getId().equals(targetEmployee.getId())) {
+            boolean isCurrentActualOwner = targetEmployee.getStore() != null
+                    && targetEmployee.getStore().getStoreAdmin() != null
+                    && targetEmployee.getStore().getStoreAdmin().getId().equals(currentUser.getId());
+            if (!isCurrentActualOwner) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Store Manager does not have permission to modify or delete a Store Admin/Owner account"
+                );
+            }
+        }
     }
 
     private void validateNewEmployeeFields(UserDto employee) throws Exception {
@@ -199,6 +229,7 @@ public class EmployeeServiceImpl implements EmployeeService {
                 () -> new Exception("employee doesn't exist with given id")
         );
         User currentUser = userService.getCurrentUser();
+        assertCanModifyTargetEmployee(currentUser, existingEmployee);
 
         if (existingEmployee.getRole() == UserRole.ROLE_ADMIN) {
             if (currentUser.getRole() != UserRole.ROLE_ADMIN) {
@@ -329,6 +360,7 @@ public class EmployeeServiceImpl implements EmployeeService {
                 () -> new Exception("employee not found")
         );
         User currentUser = userService.getCurrentUser();
+        assertCanModifyTargetEmployee(currentUser, employee);
         if (currentUser != null && currentUser.getId().equals(employee.getId())) {
             throw new Exception("You cannot delete your own account");
         }

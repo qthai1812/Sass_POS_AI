@@ -45,6 +45,13 @@ public class UserServiceImpl implements UserService {
         if (Boolean.FALSE.equals(user.getLoginAccess())) {
             throw new UserException("Login access for this account has been disabled by your manager.");
         }
+        if (user.getRole() != UserRole.ROLE_ADMIN) {
+            Store effectiveStore = resolveEffectiveStore(user);
+            if (effectiveStore != null && effectiveStore.getStatus() == StoreStatus.BLOCKED) {
+                throw new UserException("Store \"" + effectiveStore.getBrand()
+                        + "\" has been BLOCKED by Super Admin. Access is suspended for all accounts in this store.");
+            }
+        }
         return user;
     }
 

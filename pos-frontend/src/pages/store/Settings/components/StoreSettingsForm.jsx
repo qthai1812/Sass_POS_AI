@@ -176,6 +176,33 @@ const StoreSettingsForm = ({ initialValues, onSubmit, onChange, isSubmitting }) 
                 <ErrorMessage name="timezone" component="div" className="text-red-500 text-sm mt-1" />
               </div>
 
+              <div className="space-y-3">
+                <Label htmlFor="dateFormat">Date Format *</Label>
+                <Field name="dateFormat">
+                  {({ field, form }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => {
+                        form.setFieldValue(field.name, value);
+                        onChange?.(field.name, value);
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select date format" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DATE_FORMAT_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </Field>
+                <ErrorMessage name="dateFormat" component="div" className="text-red-500 text-sm mt-1" />
+              </div>
+
             </div>
 
             <div className="space-y-3">
@@ -203,6 +230,18 @@ const StoreSettingsForm = ({ initialValues, onSubmit, onChange, isSubmitting }) 
                 className={errors.storeDescription && touched.storeDescription ? "border-red-500" : ""}
               />
               <ErrorMessage name="storeDescription" component="div" className="text-red-500 text-sm mt-1" />
+            </div>
+
+            <div className="space-y-3">
+              <Label htmlFor="receiptFooter">Receipt Footer</Label>
+              <Field
+                as={Input}
+                id="receiptFooter"
+                name="receiptFooter"
+                onChange={handleFieldChange}
+                placeholder="Lời cảm ơn cuối hóa đơn..."
+              />
+              <ErrorMessage name="receiptFooter" component="div" className="text-red-500 text-sm mt-1" />
             </div>
 
           </div>

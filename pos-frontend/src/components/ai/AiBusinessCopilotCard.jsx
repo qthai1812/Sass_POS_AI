@@ -111,7 +111,8 @@ export default function AiBusinessCopilotCard({
   };
 
   const handleQuickRestock = async (item) => {
-    if (!branchId) {
+    const targetBranchId = item.branchId || branchId;
+    if (!targetBranchId) {
       toast({
         title: "Chọn chi nhánh",
         description: "Vui lòng vào trang Quản lý chi nhánh cụ thể để nhập kho 1-click.",
@@ -121,7 +122,7 @@ export default function AiBusinessCopilotCard({
     setRestockingProductId(item.productId);
     try {
       await api.post("/api/inventories", {
-        branchId,
+        branchId: targetBranchId,
         productId: item.productId,
         quantity: item.suggestedRestockQty,
       });
@@ -240,7 +241,7 @@ export default function AiBusinessCopilotCard({
                         Đề xuất nhập thêm: +{item.suggestedRestockQty} SP
                       </p>
                     </div>
-                    {branchId && (
+                    {(branchId || item.branchId) && (
                       <Button
                         size="sm"
                         variant="outline"

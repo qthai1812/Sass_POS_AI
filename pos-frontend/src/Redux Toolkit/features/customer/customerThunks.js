@@ -161,3 +161,21 @@ export const getAllCustomers = createAsyncThunk(
     }
   }
 ); 
+
+
+// Search Customers by keyword (name, phone, email)
+export const searchCustomers = createAsyncThunk(
+  'customer/search',
+  async (keyword, { rejectWithValue }) => {
+    try {
+      const headers = getAuthHeaders();
+      const query = keyword ? `?keyword=${encodeURIComponent(keyword.trim())}` : '';
+      const res = await api.get(`/api/customers/search${query}`, { headers });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || 'Failed to search customers'
+      );
+    }
+  }
+);
