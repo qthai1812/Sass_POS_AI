@@ -472,7 +472,8 @@ public class ShiftReportServiceImpl implements ShiftReportService {
     public void deleteShiftReport(Long id) throws Exception {
         ShiftReport report = shiftReportRepository.findById(id)
                 .orElseThrow(() -> new Exception("shift report not found with given id " + id));
-        accessControl.assertCanManageBranch(userService.getCurrentUser(), report.getBranch());
+        Store reportStore = report.getBranch() != null ? report.getBranch().getStore() : null;
+        accessControl.assertStoreLevelOrAdmin(userService.getCurrentUser(), reportStore);
         List<Refund> linkedRefunds = refundRepository.findByShiftReportId(report.getId());
         for (Refund r : linkedRefunds) {
             r.setShiftReport(null);

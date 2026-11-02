@@ -47,5 +47,7 @@ public class OrderDTO {
 
     private OrderStatus status;
 
+    private String paymentSessionId;
+
     private List<OrderItemDTO> items;
 }

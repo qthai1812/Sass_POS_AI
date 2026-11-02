@@ -424,7 +424,11 @@ public class RefundServiceImpl implements RefundService {
         Refund refund = refundRepository.findById(refundId).orElseThrow(
                 () -> new Exception("Refund not found with id: " + refundId)
         );
-        accessControl.assertCanManageBranch(userService.getCurrentUser(), refund.getBranch());
+        Store refundStore = refund.getBranch() != null ? refund.getBranch().getStore()
+                : (refund.getOrder() != null && refund.getOrder().getBranch() != null
+                ? refund.getOrder().getBranch().getStore()
+                : accessControl.resolveStoreOfUser(refund.getCashier()));
+        accessControl.assertStoreLevelOrAdmin(userService.getCurrentUser(), refundStore);
 
         Order order = refund.getOrder();
         if (order != null) {

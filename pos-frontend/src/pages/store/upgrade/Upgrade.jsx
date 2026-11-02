@@ -89,8 +89,13 @@ const Upgrade = () => {
     error: subError,
   } = useSelector((state) => state.subscription);
   const { store } = useSelector((state) => state.store);
+  const { userProfile } = useSelector((state) => state.user);
 
   const { entitlements, refresh: refreshEntitlements } = usePlanEntitlements();
+  const canManageBilling =
+    userProfile?.role === "ROLE_STORE_ADMIN" ||
+    userProfile?.role === "ROLE_STORE_MANAGER" ||
+    userProfile?.role === "ROLE_ADMIN";
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -435,6 +440,17 @@ const Upgrade = () => {
   };
 
   const handleOpenCheckout = (plan) => {
+    if (!canManageBilling) {
+      const msg =
+        "Chỉ Chủ cửa hàng (ROLE_STORE_ADMIN) mới có quyền đăng ký hoặc nâng cấp gói cước.";
+      setActionError(msg);
+      toast({
+        title: "Không đủ quyền thanh toán gói cước",
+        description: msg,
+        variant: "destructive",
+      });
+      return;
+    }
     const blocker = getSwitchBlocker(plan);
     if (blocker) {
       setActionError(blocker);
@@ -445,7 +461,8 @@ const Upgrade = () => {
         variant: "destructive",
       });
       return;
-    }    setSelectedPlan(plan);
+    }
+    setSelectedPlan(plan);
     setActionError(null);
     setSuccessMsg(null);
     setCheckoutOpen(true);

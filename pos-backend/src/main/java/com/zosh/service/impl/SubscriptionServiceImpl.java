@@ -55,9 +55,10 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         User user = userService.getCurrentUser();
         if (user.getRole() == UserRole.ROLE_ADMIN) return;
         boolean isOwner = store.getStoreAdmin() != null && store.getStoreAdmin().getId().equals(user.getId());
-        boolean isStoreAdmin = user.getRole() == UserRole.ROLE_STORE_ADMIN
+        boolean isStoreLevelAdminOrManager = (user.getRole() == UserRole.ROLE_STORE_ADMIN
+                || user.getRole() == UserRole.ROLE_STORE_MANAGER)
                 && user.getStore() != null && user.getStore().getId().equals(store.getId());
-        if (!isOwner && !isStoreAdmin) {
+        if (!isOwner && !isStoreLevelAdminOrManager) {
             throw new AccessDeniedException("You do not have permission to manage subscriptions of this store");
         }
     }
