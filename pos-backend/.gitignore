@@ -35,11 +35,6 @@ build/
 ### VS Code ###
 .vscode/
 
-### Environment & Secrets ###
-.env
-.env.example
-src/main/resources/application.properties
-src/main/resources/application.properties.example
 
 ### Documents ###
 *.pdf
