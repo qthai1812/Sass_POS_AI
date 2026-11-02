@@ -31,7 +31,11 @@ const StoreSettings = ({ settings, onChange }) => {
       await dispatch(
         updateStore({
           id: store.id,
-          storeData: apiData,
+          storeData: {
+            ...apiData,
+            storeType: store.storeType || apiData.storeType || "Retail Store",
+            paymentInfo: store.paymentInfo,
+          },
         }),
       ).unwrap();
 

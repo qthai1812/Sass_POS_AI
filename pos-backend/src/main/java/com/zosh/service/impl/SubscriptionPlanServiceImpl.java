@@ -127,10 +127,10 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         if (!subscriptionPlanRepository.existsById(id)) {
             throw new Exception("Subscription plan not found with id: " + id);
         }
-        boolean inUse = subscriptionRepository
-                .findByStatusIn(List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL))
-                .stream()
-                .anyMatch(s -> s.getPlanId() != null && s.getPlanId().trim().equals(String.valueOf(id)));
+        boolean inUse = subscriptionRepository.existsByPlanIdAndStatusIn(
+                String.valueOf(id),
+                List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL)
+        );
         if (inUse) {
             throw new IllegalArgumentException("This plan is used by stores with an active/trial subscription and cannot be deleted. Deactivate it instead.");
         }

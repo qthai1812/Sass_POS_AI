@@ -17,17 +17,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select";
-import { Eye, MoreHorizontal, Ban, CheckCircle } from "lucide-react";
+import { Eye, MoreHorizontal, Ban, CheckCircle, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
 import StoreStatusBadge from "./StoreStatusBadge";
 import {
   getAllStores,
   moderateStore,
+  deleteStore,
 } from "../../../Redux Toolkit/features/store/storeThunks";
 import { formatDateTime } from "../../../utils/formateDate";
 import { toast as sonnerToast } from "sonner";
@@ -39,6 +41,7 @@ export default function StoreTable({
 }) {
   const dispatch = useDispatch();
   const { stores = [], loading, error } = useSelector((state) => state.store);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState(null);
@@ -51,15 +54,14 @@ export default function StoreTable({
     );
   }, [dispatch, statusFilter]);
 
-  // Client-side search across brand, storeAdmin.fullName, and contact.email
   const filteredStores = (stores || []).filter((store) => {
     const query = searchTerm.toLowerCase();
-    const matchesSearch =
+    return (
       (store.brand?.toLowerCase() || "").includes(query) ||
       (store.storeAdmin?.fullName?.toLowerCase() || "").includes(query) ||
       (store.contact?.email?.toLowerCase() || "").includes(query) ||
-      (store.contact?.phone || "").includes(query);
-    return matchesSearch;
+      (store.contact?.phone || "").includes(query)
+    );
   });
 
   const handleStatusChange = async (storeId, newStatus) => {
@@ -69,19 +71,7 @@ export default function StoreTable({
         moderateStore({ storeId, action: newStatus })
       ).unwrap();
       const brandName = updated?.brand || "Store";
-      if (newStatus === "ACTIVE") {
-        sonnerToast.success(
-          `${brandName} is now ACTIVE. Store Admin, Branch Managers, and Cashiers can access the system.`
-        );
-      } else if (newStatus === "PENDING") {
-        sonnerToast.info(
-          `${brandName} is now PENDING. All store and branch accounts are waiting for approval.`
-        );
-      } else if (newStatus === "BLOCKED") {
-        sonnerToast.warning(
-          `${brandName} has been BLOCKED. All store and branch accounts are now suspended.`
-        );
-      }
+      sonnerToast.success(`Đã cập nhật trạng thái "${brandName}" sang ${newStatus}.`);
     } catch (err) {
       sonnerToast.error(
         typeof err === "string" ? err : "Failed to update store status"
@@ -91,9 +81,28 @@ export default function StoreTable({
     }
   };
 
+  // HÀM XÓA CỬA HÀNG VĨNH VIỄN
+  const handleDeleteStore = async (store) => {
+    const confirmDelete = window.confirm(
+      `Bạn có chắc chắn muốn xóa vĩnh viễn cửa hàng "${store.brand}" (#${store.id})?\nToàn bộ chi nhánh, sản phẩm và đơn hàng của cửa hàng này sẽ bị xóa!`
+    );
+    if (!confirmDelete) return;
+
+    setUpdatingId(store.id);
+    try {
+      await dispatch(deleteStore(store.id)).unwrap();
+      sonnerToast.success(`Đã xóa cửa hàng "${store.brand}" thành công.`);
+    } catch (err) {
+      sonnerToast.error(
+        typeof err === "string" ? err : "Không thể xóa cửa hàng"
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
           <Input
@@ -116,7 +125,6 @@ export default function StoreTable({
         </Select>
       </div>
 
-      {/* Table */}
       <div className="border rounded-lg overflow-x-auto">
         {loading ? (
           <div className="text-center py-8">Loading stores...</div>
@@ -165,11 +173,6 @@ export default function StoreTable({
                           <SelectItem value="BLOCKED">Blocked</SelectItem>
                         </SelectContent>
                       </Select>
-                      {updatingId === store.id && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          Updating...
-                        </span>
-                      )}
                     </TableCell>
                     <TableCell>{formatDateTime(store.createdAt)}</TableCell>
                     <TableCell className="text-right">
@@ -186,19 +189,7 @@ export default function StoreTable({
                             <Eye className="mr-2 h-4 w-4" />
                             View Details
                           </DropdownMenuItem>
-                          {upperStatus === "ACTIVE" && (
-                            <DropdownMenuItem
-                              onClick={() =>
-                                onBlockStore
-                                  ? onBlockStore(store.id)
-                                  : handleStatusChange(store.id, "BLOCKED")
-                              }
-                            >
-                              <Ban className="mr-2 h-4 w-4" />
-                              Block Store
-                            </DropdownMenuItem>
-                          )}
-                          {upperStatus === "BLOCKED" && (
+                          {upperStatus !== "ACTIVE" && (
                             <DropdownMenuItem
                               onClick={() =>
                                 onActivateStore
@@ -206,34 +197,30 @@ export default function StoreTable({
                                   : handleStatusChange(store.id, "ACTIVE")
                               }
                             >
-                              <CheckCircle className="mr-2 h-4 w-4" />
+                              <CheckCircle className="mr-2 h-4 w-4 text-emerald-600" />
                               Activate Store
                             </DropdownMenuItem>
                           )}
-                          {upperStatus === "PENDING" && (
-                            <>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  onActivateStore
-                                    ? onActivateStore(store.id)
-                                    : handleStatusChange(store.id, "ACTIVE")
-                                }
-                              >
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Approve Store
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  onBlockStore
-                                    ? onBlockStore(store.id)
-                                    : handleStatusChange(store.id, "BLOCKED")
-                                }
-                              >
-                                <Ban className="mr-2 h-4 w-4" />
-                                Reject Store
-                              </DropdownMenuItem>
-                            </>
+                          {upperStatus !== "BLOCKED" && (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                onBlockStore
+                                  ? onBlockStore(store.id)
+                                  : handleStatusChange(store.id, "BLOCKED")
+                              }
+                            >
+                              <Ban className="mr-2 h-4 w-4 text-amber-600" />
+                              Block Store
+                            </DropdownMenuItem>
                           )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteStore(store)}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Store
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -244,12 +231,6 @@ export default function StoreTable({
           </Table>
         )}
       </div>
-
-      {filteredStores.length === 0 && !loading && !error && (
-        <div className="text-center py-8 text-muted-foreground">
-          No stores found matching your criteria.
-        </div>
-      )}
     </div>
   );
 }

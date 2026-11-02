@@ -152,6 +152,10 @@ public class CouponServiceImpl implements CouponService {
                 .orElseThrow(() -> new Exception("Store not found"));
         validateCouponStoreAccess(store);
         validateCouponValues(dto.getCode(), dto.getDiscountType(), dto.getDiscountValue());
+        if (dto.getValidFrom() != null && dto.getValidUntil() != null
+                && dto.getValidFrom().isAfter(dto.getValidUntil())) {
+            throw new IllegalArgumentException("Valid-from date must be before valid-until date");
+        }
 
         String normalizedCode = dto.getCode().trim().toUpperCase();
         if (couponRepository.findByCodeAndStoreId(normalizedCode, store.getId()).isPresent()) {
@@ -189,6 +193,10 @@ public class CouponServiceImpl implements CouponService {
         if (dto.getDiscountType() != null) coupon.setDiscountType(dto.getDiscountType());
         if (dto.getDiscountValue() != null) coupon.setDiscountValue(dto.getDiscountValue());
         validateCouponValues(coupon.getCode(), coupon.getDiscountType(), coupon.getDiscountValue());
+        if (dto.getValidFrom() != null && dto.getValidUntil() != null
+                && dto.getValidFrom().isAfter(dto.getValidUntil())) {
+            throw new IllegalArgumentException("Valid-from date must be before valid-until date");
+        }
 
         if (dto.getMinOrderValue() != null) coupon.setMinOrderValue(dto.getMinOrderValue());
         if (dto.getValidFrom() != null) coupon.setValidFrom(dto.getValidFrom());

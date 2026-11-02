@@ -45,10 +45,10 @@ export default function Stores() {
   }, [dispatch, userProfile?.role]);
 
   useEffect(() => {
-    if (store?.id) {
+    if (userProfile?.id) {
       fetchStoreData();
     }
-  }, [fetchStoreData, store?.id]);
+  }, [fetchStoreData, userProfile?.id]);
 
   useEffect(() => {
     if (store) {

@@ -85,6 +85,10 @@ public class AiCopilotService {
                 store = storeRepository.findById(storeAdminId).orElse(null);
             }
         }
+        if (store == null) {
+            throw new Exception("Store not found for analyzing AI insights");
+        }
+        accessControl.assertCanAccessStore(current, store);
         assertAiFeatureEnabled(store);
 
         // Luôn truyền đúng User ID (chủ cửa hàng) cho StoreAnalyticsService
@@ -430,31 +434,45 @@ public class AiCopilotService {
         if (store == null && storeId != null) {
             store = storeRepository.findById(storeId).orElse(null);
         }
-        if (store == null && branchId != null) {
-            store = branchRepository.findById(branchId).map(Branch::getStore).orElse(null);
+        if (branchId != null) {
+            Branch branch = branchRepository.findById(branchId)
+                    .orElseThrow(() -> new Exception("Branch not found: " + branchId));
+            accessControl.assertCanAccessBranch(current, branch);
+            if (store == null) {
+                store = branch.getStore();
+            }
         }
         assertAiFeatureEnabled(store);
 
         Set<Long> inCart = cartProductIds != null ? new HashSet<>(cartProductIds) : Collections.emptySet();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.time.LocalDateTime thirtyDaysAgo = now.minusDays(30);
+
+        // Chỉ lấy đơn hàng trong 30 ngày gần nhất để tối ưu RAM và tốc độ phản hồi tại quầy POS
         List<Order> branchOrders = branchId != null
-                ? orderRepository.findByBranchId(branchId)
+                ? orderRepository.findByBranchIdAndCreatedAtBetween(branchId, thirtyDaysAgo, now)
                 : (store != null ? orderRepository.findAllByStoreIdWithDetails(store.getId()) : Collections.emptyList());
 
         Map<Long, Integer> scoreByProductId = new HashMap<>();
         Map<Long, String> reasonByProductId = new HashMap<>();
         Map<Long, Product> productById = new HashMap<>();
 
-        if (customerId != null) {
-            List<Order> customerOrders = orderRepository.findByCustomerId(customerId);
-            for (Order co : customerOrders) {
-                if (co.getItems() == null) continue;
-                for (OrderItem oi : co.getItems()) {
-                    Product p = oi.getProduct();
-                    if (p != null && p.getId() != null && !inCart.contains(p.getId())) {
-                        productById.put(p.getId(), p);
-                        int qty = oi.getQuantity() != null ? oi.getQuantity() : 1;
-                        scoreByProductId.merge(p.getId(), qty * 5, Integer::sum);
-                        reasonByProductId.putIfAbsent(p.getId(), "Khách hàng này thường xuyên mua trước đây");
+        if (customerId != null && store != null) {
+            final Long currentStoreId = store.getId();
+            Customer cust = customerRepository.findById(customerId).orElse(null);
+            // Kiểm tra khách hàng phải thuộc Store hiện tại
+            if (cust != null && cust.getStore() != null && cust.getStore().getId().equals(currentStoreId)) {
+                List<Order> customerOrders = orderRepository.findByCustomerId(customerId);
+                for (Order co : customerOrders) {
+                    if (co.getItems() == null) continue;
+                    for (OrderItem oi : co.getItems()) {
+                        Product p = oi.getProduct();
+                        if (p != null && p.getId() != null && !inCart.contains(p.getId())) {
+                            productById.put(p.getId(), p);
+                            int qty = oi.getQuantity() != null ? oi.getQuantity() : 1;
+                            scoreByProductId.merge(p.getId(), qty * 5, Integer::sum);
+                            reasonByProductId.putIfAbsent(p.getId(), "Khách hàng này thường xuyên mua trước đây");
+                        }
                     }
                 }
             }

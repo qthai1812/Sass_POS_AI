@@ -163,15 +163,15 @@ const refundSlice = createSlice({
       })
       .addCase(deleteRefund.fulfilled, (state, action) => {
         state.loading = false;
-        // Remove the deleted refund from all arrays
-        state.refunds = state.refunds.filter(refund => refund.id !== action.payload);
-        state.refundsByCashier = state.refundsByCashier.filter(refund => refund.id !== action.payload);
-        state.refundsByBranch = state.refundsByBranch.filter(refund => refund.id !== action.payload);
-        state.refundsByShift = state.refundsByShift.filter(refund => refund.id !== action.payload);
-        state.refundsByDateRange = state.refundsByDateRange.filter(refund => refund.id !== action.payload);
+        const deletedId = Number(action.payload);
+        const keepNotDeleted = (refund) => Number(refund?.id) !== deletedId;
+        state.refunds = (state.refunds || []).filter(keepNotDeleted);
+        state.refundsByCashier = (state.refundsByCashier || []).filter(keepNotDeleted);
+        state.refundsByBranch = (state.refundsByBranch || []).filter(keepNotDeleted);
+        state.refundsByShift = (state.refundsByShift || []).filter(keepNotDeleted);
+        state.refundsByDateRange = (state.refundsByDateRange || []).filter(keepNotDeleted);
         
-        // Clear selected refund if it was the deleted one
-        if (state.selectedRefund && state.selectedRefund.id === action.payload) {
+        if (state.selectedRefund && Number(state.selectedRefund.id) === deletedId) {
           state.selectedRefund = null;
         }
       })

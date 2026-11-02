@@ -178,16 +178,26 @@ public class StoreAnalyticsServiceImpl implements StoreAnalyticsService {
 
     @Override
     public List<DailySalesDTO> getDailySales(Long storeAdminId) throws Exception {
-        Map<Long, Double> refundedMap = getRefundedMapByStore(resolveStoreAndValidateAccess(storeAdminId).getId());
-        List<Order> orders = getAllOrdersForUser(storeAdminId);
+        Store store = resolveStoreAndValidateAccess(storeAdminId);
+        Map<Long, Double> refundedMap = getRefundedMapByStore(store.getId());
+        LocalDate today = LocalDate.now();
+        LocalDateTime startRange = today.minusDays(29).atStartOfDay();
+        LocalDateTime endRange = today.plusDays(1).atStartOfDay();
+
+        List<Order> recentOrders = orderRepository
+                .findByStoreIdAndCreatedAtBetween(store.getId(), startRange, endRange)
+                .stream()
+                .filter(this::isCompletedRevenueOrder)
+                .collect(Collectors.toList());
+
+        Map<LocalDate, List<Order>> ordersByDate = recentOrders.stream()
+                .filter(o -> o.getCreatedAt() != null)
+                .collect(Collectors.groupingBy(o -> o.getCreatedAt().toLocalDate()));
+
         List<DailySalesDTO> result = new ArrayList<>();
         for (int i = 29; i >= 0; i--) {
-            LocalDate date = LocalDate.now().minusDays(i);
-            LocalDateTime start = date.atStartOfDay();
-            LocalDateTime end = date.plusDays(1).atStartOfDay();
-            List<Order> dayOrders = orders.stream()
-                    .filter(o -> o.getCreatedAt() != null && !o.getCreatedAt().isBefore(start) && o.getCreatedAt().isBefore(end))
-                    .collect(Collectors.toList());
+            LocalDate date = today.minusDays(i);
+            List<Order> dayOrders = ordersByDate.getOrDefault(date, Collections.emptyList());
             double total = dayOrders.stream().mapToDouble(o -> netOrderAmount(o, refundedMap)).sum();
             result.add(new DailySalesDTO(date.toString(), total, dayOrders.size()));
         }

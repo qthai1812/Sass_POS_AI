@@ -23,12 +23,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle, XCircle, Eye, Clock } from "lucide-react";
 
 import { useToast } from "@/components/ui/use-toast";
-import { getAllStores, moderateStore } from "@/Redux Toolkit/features/store/storeThunks";
+import { getAllStores, moderateStore, updateStore } from "@/Redux Toolkit/features/store/storeThunks";
 import { formatDateTime } from "@/utils/formateDate";
 
 export default function PendingRequestsPage() {
   const dispatch = useDispatch();
   const { stores, loading, error } = useSelector((state) => state.store);
+  const pendingStores = (stores || []).filter(
+    (s) => String(s.status || "").toUpperCase() === "PENDING",
+  );
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [rejectionDialogOpen, setRejectionDialogOpen] = useState(false);
@@ -77,6 +80,14 @@ export default function PendingRequestsPage() {
     if (selectedRequest && rejectionReason.trim()) {
       setUpdatingId(selectedRequest.id);
       try {
+        await dispatch(
+          updateStore({
+            id: selectedRequest.id,
+            storeData: {
+              description: `[Lý do từ chối]: ${rejectionReason.trim()}`,
+            },
+          })
+        ).unwrap();
         await dispatch(moderateStore({ storeId: selectedRequest.id, action: "BLOCKED" })).unwrap();
         toast({
           title: "Store Rejected",
@@ -110,7 +121,7 @@ export default function PendingRequestsPage() {
         </div>
         <Badge variant="secondary" className="flex items-center gap-1">
           <Clock className="w-3 h-3" />
-          {stores.length} Pending
+          {pendingStores.length} Pending
         </Badge>
       </div>
 
@@ -138,7 +149,7 @@ export default function PendingRequestsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {stores.map((store) => (
+                  {pendingStores.map((store) => (
                     <TableRow key={store.id}>
                       <TableCell className="font-medium">{store.brand}</TableCell>
                       <TableCell>{store.storeAdmin?.fullName}</TableCell>
@@ -183,7 +194,7 @@ export default function PendingRequestsPage() {
             )}
           </div>
 
-          {stores.length === 0 && !loading && !error && (
+          {pendingStores.length === 0 && !loading && !error && (
             <div className="text-center py-8 text-muted-foreground">
               No pending requests at the moment.
             </div>

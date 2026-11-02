@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -69,5 +70,40 @@ public class InventoryController {
             @PathVariable Long branchId
     ) throws Exception {
         return ResponseEntity.ok(inventoryService.getAllInventoryByBranchId(branchId));
+    }
+
+    @PostMapping("/transfer")
+    public ResponseEntity<ApiResponse> transferInventory(
+            @RequestParam(required = false) Long productId,
+            @RequestParam(required = false) Long fromBranchId,
+            @RequestParam(required = false) Long toBranchId,
+            @RequestParam(required = false) Integer quantity,
+            @RequestBody(required = false) Map<String, Object> body
+    ) throws Exception {
+        Long pId = productId;
+        Long fromB = fromBranchId;
+        Long toB = toBranchId;
+        Integer qty = quantity;
+        if (body != null) {
+            if (pId == null && body.get("productId") != null) {
+                pId = Long.valueOf(body.get("productId").toString());
+            }
+            if (fromB == null && body.get("fromBranchId") != null) {
+                fromB = Long.valueOf(body.get("fromBranchId").toString());
+            }
+            if (toB == null && body.get("toBranchId") != null) {
+                toB = Long.valueOf(body.get("toBranchId").toString());
+            }
+            if (qty == null && body.get("quantity") != null) {
+                qty = Integer.valueOf(body.get("quantity").toString());
+            }
+        }
+        if (pId == null || fromB == null || toB == null || qty == null) {
+            throw new IllegalArgumentException("productId, fromBranchId, toBranchId, quantity are required");
+        }
+        inventoryService.transferInventory(pId, fromB, toB, qty);
+        ApiResponse res = new ApiResponse();
+        res.setMessage("Inventory transferred successfully");
+        return ResponseEntity.ok(res);
     }
 }

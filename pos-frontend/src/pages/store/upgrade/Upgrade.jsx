@@ -38,6 +38,7 @@ import {
   subscribeToPlan,
   upgradeSubscription,
   getStoreSubscriptions,
+  cancelSubscription,
 } from "../../../Redux Toolkit/features/subscription/subscriptionThunks";
 import { useToast } from "@/components/ui/use-toast";
 import usePlanEntitlements from "@/hooks/usePlanEntitlements";
@@ -178,6 +179,8 @@ const Upgrade = () => {
       const transactionId =
         verifiedSession?.transactionId ||
         `${paymentMethod}-${Date.now().toString().slice(-6)}`;
+      const normalizedGateway =
+        paymentMethod === "MOMO" ? "MOMO" : (paymentMethod === "VISA" ? "VISA" : "RAZORPAY");
 
       try {
         if (currentSubscription) {
@@ -185,7 +188,7 @@ const Upgrade = () => {
             upgradeSubscription({
               storeId: store.id,
               planId: selectedPlan.id,
-              gateway: paymentMethod,
+              gateway: normalizedGateway,
               transactionId,
             }),
           ).unwrap();
@@ -197,7 +200,7 @@ const Upgrade = () => {
             subscribeToPlan({
               storeId: store.id,
               planId: selectedPlan.id,
-              gateway: paymentMethod,
+              gateway: normalizedGateway,
               transactionId,
             }),
           ).unwrap();
@@ -252,6 +255,12 @@ const Upgrade = () => {
       setCreatingSession(true);
       subCompletedRef.current = false;
       try {
+        const rawPlatformCard = platformConfig?.cardNumber?.trim() || "";
+        const safeBankAccount =
+          rawPlatformCard && !rawPlatformCard.includes("•") && !rawPlatformCard.includes("*")
+            ? rawPlatformCard
+            : platformMomoPhone;
+
         const res = await api.post("/api/payment-gateway/sessions", {
           storeId: null,
           storeName: `POS Pro SaaS (${selectedPlan.name})`,
@@ -260,7 +269,7 @@ const Upgrade = () => {
           recipientPhone: platformMomoPhone,
           recipientName: platformMomoOwner,
           bankName: platformBankName,
-          bankAccount: platformConfig?.cardNumber?.trim() || platformMomoPhone,
+          bankAccount: safeBankAccount,
         });
         setGatewaySession((prev) => (res.data ? { ...res.data, webhookToken: res.data.webhookToken || prev?.webhookToken } : res.data));
       } catch (e) {
@@ -439,13 +448,23 @@ const Upgrade = () => {
     return null;
   };
 
-  const handleOpenCheckout = (plan) => {
-    if (!canManageBilling) {
-      const msg =
-        "Chỉ Chủ cửa hàng (ROLE_STORE_ADMIN) mới có quyền đăng ký hoặc nâng cấp gói cước.";
+  const handleOpenCheckout = async (plan) => {
+    if (plan.active === false) {
+      const msg = `Gói cước "${plan.name}" hiện đã ngừng cung cấp.`;
       setActionError(msg);
       toast({
-        title: "Không đủ quyền thanh toán gói cước",
+        title: "Gói cước không khả dụng",
+        description: msg,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!canManageBilling) {
+      const msg =
+        "Chỉ Chủ cửa hàng (ROLE_STORE_ADMIN) hoặc Quản lý chuỗi (ROLE_STORE_MANAGER) mới có quyền đăng ký hoặc nâng cấp gói cước.";
+      setActionError(msg);
+      toast({
+        title: "Không đủ quyền thanh toán",
         description: msg,
         variant: "destructive",
       });
@@ -465,7 +484,87 @@ const Upgrade = () => {
     setSelectedPlan(plan);
     setActionError(null);
     setSuccessMsg(null);
+
+    // Nếu gói cước miễn phí (price === 0), kích hoạt trực tiếp không cần mở cổng thanh toán
+    if (Number(plan.price || 0) <= 0) {
+      subCompletedRef.current = false;
+      setActionLoading(true);
+      const freeTxId = `FREE-${Date.now()}`;
+      try {
+        if (currentSubscription) {
+          await dispatch(
+            upgradeSubscription({
+              storeId: store.id,
+              planId: plan.id,
+              gateway: "RAZORPAY",
+              transactionId: freeTxId,
+            }),
+          ).unwrap();
+        } else {
+          await dispatch(
+            subscribeToPlan({
+              storeId: store.id,
+              planId: plan.id,
+              gateway: "RAZORPAY",
+              transactionId: freeTxId,
+            }),
+          ).unwrap();
+        }
+        dispatch(getStoreSubscriptions({ storeId: store.id }));
+        refreshEntitlements();
+        setSuccessMsg(`Đã kích hoạt thành công gói "${plan.name}".`);
+        toast({
+          title: "Kích hoạt gói thành công!",
+          description: `Gói "${plan.name}" đã được áp dụng cho cửa hàng.`,
+        });
+      } catch (err) {
+        const errMsg = (err && err.message) || err || "Không thể kích hoạt gói miễn phí.";
+        setActionError(errMsg);
+        toast({
+          title: "Lỗi kích hoạt gói",
+          description: errMsg,
+          variant: "destructive",
+        });
+      } finally {
+        setActionLoading(false);
+      }
+      return;
+    }
+
     setCheckoutOpen(true);
+  };
+
+  const handleCancelCurrentSubscription = async () => {
+    if (!currentSubscription?.id) return;
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn hủy gói "${
+          currentSubscription.planName || currentSubscription.plan?.name
+        }" hiện tại? Cửa hàng sẽ chuyển về giới hạn mặc định (Free Starter).`
+      )
+    ) {
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await dispatch(cancelSubscription(currentSubscription.id)).unwrap();
+      if (store?.id) {
+        dispatch(getStoreSubscriptions({ storeId: store.id }));
+      }
+      refreshEntitlements();
+      toast({
+        title: "Đã hủy gói cước",
+        description: "Gói đăng ký của cửa hàng đã được hủy thành công.",
+      });
+    } catch (err) {
+      toast({
+        title: "Lỗi khi hủy gói",
+        description: typeof err === "string" ? err : "Không thể hủy gói cước",
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleCopy = (val, key) => {
@@ -486,6 +585,10 @@ const Upgrade = () => {
     (qrMode === "MOBILE_GATEWAY" && gatewaySession?.qrImageForMobileCheckout
       ? gatewaySession.qrImageForMobileCheckout
       : gatewaySession?.vietQrImageUrl || fallbackVietQrUrl);
+
+  const visiblePlans = (plans || []).filter(
+    (plan) => plan.active !== false || isCurrentPlan(plan),
+  );
 
   return (
     <div className="max-w-5xl mx-auto py-10 px-4">
@@ -529,17 +632,30 @@ const Upgrade = () => {
                     Trạng thái: {currentSubscription.status} | Hết hạn:{" "}
                     {currentSubscription.endDate
                       ? new Date(
-                          currentSubscription.endDate,
+                          currentSubscription.endDate
                         ).toLocaleDateString("vi-VN")
-                      : "—"}
+                      : "Không thời hạn"}
                   </div>
                 </div>
               </div>
-              {currentSubscription.transactionId && (
-                <Badge variant="outline" className="font-mono text-xs">
-                  Mã GD: {currentSubscription.transactionId}
-                </Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {currentSubscription.transactionId && (
+                  <Badge variant="outline" className="font-mono text-xs">
+                    Mã GD: {currentSubscription.transactionId}
+                  </Badge>
+                )}
+                {canManageBilling && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={actionLoading}
+                    onClick={handleCancelCurrentSubscription}
+                  >
+                    <XCircle className="w-4 h-4 mr-1" />
+                    Hủy gói
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 
@@ -555,7 +671,7 @@ const Upgrade = () => {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {plans?.map((plan) => {
+            {visiblePlans.map((plan) => {
               const activePlan = isCurrentPlan(plan);
               return (
                 <div

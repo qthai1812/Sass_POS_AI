@@ -25,7 +25,7 @@ public class PaymentGatewayController {
 
     @GetMapping("/platform-config")
     public ResponseEntity<PlatformPaymentConfig> getPlatformPaymentConfig() {
-        return ResponseEntity.ok(paymentGatewayService.getOrCreatePlatformConfig());
+        return ResponseEntity.ok(paymentGatewayService.getPublicPlatformConfig());
     }
 
     @PreAuthorize("hasRole('ADMIN')")

@@ -43,6 +43,9 @@ public class PaymentGatewayService {
     @Value("${server.port:5000}")
     private int serverPort;
 
+    @Value("${app.backend-url:}")
+    private String publicBackendUrl;
+
     private static final int MAX_CACHED_SESSIONS = 2000;
     private static final long SESSION_TTL_HOURS = 2L;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -168,6 +171,34 @@ public class PaymentGatewayService {
         }
     }
 
+    /**
+     * Bản sao cấu hình đã che số thẻ (chỉ giữ 4 số đầu và 4 số cuối) khi trả về cho các Store xem.
+     */
+    public PlatformPaymentConfig getPublicPlatformConfig() {
+        PlatformPaymentConfig raw = getOrCreatePlatformConfig();
+        String cardNum = raw.getCardNumber();
+        String maskedCard = cardNum;
+        if (cardNum != null) {
+            String digits = cardNum.replaceAll("\\D", "");
+            if (digits.length() >= 8) {
+                maskedCard = digits.substring(0, 4) + " •••• •••• " + digits.substring(digits.length() - 4);
+            }
+        }
+        return PlatformPaymentConfig.builder()
+                .id(raw.getId())
+                .acceptMomo(raw.getAcceptMomo())
+                .acceptCard(raw.getAcceptCard())
+                .momoPhone(raw.getMomoPhone())
+                .momoOwnerName(raw.getMomoOwnerName())
+                .momoQrImage(raw.getMomoQrImage())
+                .cardBankName(raw.getCardBankName())
+                .cardNumber(maskedCard)
+                .cardHolderName(raw.getCardHolderName())
+                .cardExpiry(raw.getCardExpiry())
+                .updatedAt(raw.getUpdatedAt())
+                .build();
+    }
+
     public PlatformPaymentConfig getOrCreatePlatformConfig() {
         return platformPaymentConfigRepository.findAll().stream().findFirst().orElseGet(() -> {
             PlatformPaymentConfig def = PlatformPaymentConfig.builder()
@@ -194,7 +225,12 @@ public class PaymentGatewayService {
         if (payload.getMomoOwnerName() != null) cfg.setMomoOwnerName(payload.getMomoOwnerName().trim());
         if (payload.getMomoQrImage() != null) cfg.setMomoQrImage(payload.getMomoQrImage().trim());
         if (payload.getCardBankName() != null) cfg.setCardBankName(payload.getCardBankName().trim());
-        if (payload.getCardNumber() != null) cfg.setCardNumber(payload.getCardNumber().trim());
+        // Chỉ cập nhật cardNumber mới nếu không phải chuỗi bị che (chứa dấu * hoặc dấu •)
+        if (payload.getCardNumber() != null
+                && !payload.getCardNumber().contains("*")
+                && !payload.getCardNumber().contains("•")) {
+            cfg.setCardNumber(payload.getCardNumber().trim());
+        }
         if (payload.getCardHolderName() != null) cfg.setCardHolderName(payload.getCardHolderName().trim());
         if (payload.getCardExpiry() != null) cfg.setCardExpiry(payload.getCardExpiry().trim());
         cfg.setUpdatedAt(LocalDateTime.now());
@@ -281,8 +317,10 @@ public class PaymentGatewayService {
                 bankBin, accountForVietQr, amountVnd, encodedAddInfo, encodedAccountName
         );
 
-        String lanIp = detectLanIp();
-        String mobileCheckoutUrl = String.format("http://%s:%d/api/payment-gateway/checkout/%s", lanIp, serverPort, sessionId);
+        String baseUrl = (publicBackendUrl != null && !publicBackendUrl.isBlank())
+                ? publicBackendUrl.trim().replaceAll("/+$", "")
+                : String.format("http://%s:%d", detectLanIp(), serverPort);
+        String mobileCheckoutUrl = String.format("%s/api/payment-gateway/checkout/%s", baseUrl, sessionId);
         String qrImageForMobileCheckout = "https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=8&data="
                 + URLEncoder.encode(mobileCheckoutUrl, StandardCharsets.UTF_8);
 

@@ -25,4 +25,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     )
     List<Product> searchByKeyword(@Param("storeId") Long storeId,
                                   @Param("query") String keyword);
+
+    @Query("SELECT COUNT(p) > 0 FROM Product p WHERE p.store.id = :storeId AND LOWER(p.sku) = LOWER(:sku)")
+    boolean existsByStoreIdAndSkuIgnoreCase(@Param("storeId") Long storeId, @Param("sku") String sku);
+
+    @Query("SELECT COUNT(p) > 0 FROM Product p WHERE p.store.id = :storeId AND LOWER(p.sku) = LOWER(:sku) AND p.id != :id")
+    boolean existsByStoreIdAndSkuIgnoreCaseAndIdNot(@Param("storeId") Long storeId, @Param("sku") String sku, @Param("id") Long id);
 }

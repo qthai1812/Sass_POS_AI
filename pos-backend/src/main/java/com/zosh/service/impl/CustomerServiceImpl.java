@@ -82,6 +82,17 @@ public class CustomerServiceImpl implements CustomerService {
             }
             customer.setStore(currentStore);
         }
+        if (customer.getPhone() != null && !customer.getPhone().trim().isEmpty()) {
+            String normalizedPhone = customer.getPhone().trim();
+            customer.setPhone(normalizedPhone);
+            if (customer.getStore() != null
+                    && customerRepository.existsByStoreIdAndPhone(customer.getStore().getId(), normalizedPhone)) {
+                throw new IllegalArgumentException("Số điện thoại khách hàng đã tồn tại trong cửa hàng này: " + normalizedPhone);
+            }
+        }
+        if (customer.getStore() == null) {
+            throw new IllegalArgumentException("Không xác định được cửa hàng để tạo khách hàng");
+        }
         customer.setUpdatedAt(LocalDateTime.now());
         return customerRepository.save(customer);
     }
@@ -103,7 +114,13 @@ public class CustomerServiceImpl implements CustomerService {
             customerToUpdate.setEmail(customer.getEmail().trim());
         }
         if (customer.getPhone() != null && !customer.getPhone().trim().isEmpty()) {
-            customerToUpdate.setPhone(customer.getPhone().trim());
+            String normalizedPhone = customer.getPhone().trim();
+            if (customerToUpdate.getStore() != null
+                    && customerRepository.existsByStoreIdAndPhoneAndIdNot(
+                            customerToUpdate.getStore().getId(), normalizedPhone, customerToUpdate.getId())) {
+                throw new IllegalArgumentException("Số điện thoại này đã thuộc về một khách hàng khác trong cửa hàng");
+            }
+            customerToUpdate.setPhone(normalizedPhone);
         }
         if (customer.getLoyaltyPoints() != null) {
             customerToUpdate.setLoyaltyPoints(Math.max(0, customer.getLoyaltyPoints()));

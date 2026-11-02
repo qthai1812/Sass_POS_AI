@@ -19,6 +19,7 @@ import {
 import { getAllBranchesByStore } from "@/Redux Toolkit/features/branch/branchThunks";
 import { storeAdminRole } from "../../../utils/userRole";
 import { toast } from "sonner";
+import usePlanEntitlements from "@/hooks/usePlanEntitlements";
 
 export default function StoreEmployees() {
   const dispatch = useDispatch();
@@ -26,6 +27,11 @@ export default function StoreEmployees() {
   const { store } = useSelector((state) => state.store);
   const { branches } = useSelector((state) => state.branch);
   const { userProfile } = useSelector((state) => state.user);
+  const { entitlements, refresh: refreshEntitlements } = usePlanEntitlements();
+
+  const isUserLimitReached =
+    entitlements?.maxUsers != null &&
+    entitlements?.usedUsers >= entitlements?.maxUsers;
 
   useEffect(() => {
     localStorage.removeItem("pos_employee_access_overrides");
@@ -69,6 +75,7 @@ export default function StoreEmployees() {
         ).unwrap();
         toast.success("Employee added successfully!");
         setIsAddDialogOpen(false);
+        refreshEntitlements();
       } catch (err) {
         toast.error(
           typeof err === "string" ? err : "Failed to create employee",
@@ -107,6 +114,7 @@ export default function StoreEmployees() {
           }),
         ).unwrap();
         toast.success("Employee deleted successfully!");
+        refreshEntitlements();
       } catch (err) {
         toast.error(
           typeof err === "string" ? err : "Failed to delete employee",
@@ -151,7 +159,6 @@ export default function StoreEmployees() {
           updateEmployee({
             employeeId: employee.id,
             employeeDetails: {
-              ...employee,
               loginAccess: nextAccess,
             },
             token: localStorage.getItem("jwt"),
@@ -180,8 +187,14 @@ export default function StoreEmployees() {
         </h1>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-700">
-              <Plus className="mr-2 h-4 w-4" /> Add Employee
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              disabled={isUserLimitReached}
+              title={isUserLimitReached ? "Đã đạt giới hạn nhân sự của gói cước" : ""}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Employee
+              {entitlements?.maxUsers ? ` (${entitlements.usedUsers}/${entitlements.maxUsers})` : ""}
             </Button>
           </DialogTrigger>
           <DialogContent className="max-h-[80vh] overflow-y-auto">

@@ -159,3 +159,35 @@ export const getInventoryByProduct = createAsyncThunk(
     }
   },
 );
+
+
+// Transfer inventory between two branches of the same store
+export const transferInventory = createAsyncThunk(
+  "inventory/transfer",
+  async ({ productId, fromBranchId, toBranchId, quantity }, { rejectWithValue }) => {
+    const token = localStorage.getItem("jwt");
+    const config = {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    };
+    try {
+      const res = await api.post(
+        "/api/inventories/transfer",
+        { productId, fromBranchId, toBranchId, quantity },
+        config,
+      );
+      return {
+        productId: Number(productId),
+        fromBranchId: Number(fromBranchId),
+        toBranchId: Number(toBranchId),
+        quantity: Number(quantity),
+        data: res.data,
+      };
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Không thể chuyển kho giữa các chi nhánh",
+      );
+    }
+  },
+);

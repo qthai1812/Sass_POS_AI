@@ -80,6 +80,20 @@ public class ProductServiceImpl implements ProductService {
         validateStoreAccess(user, store);
         planLimitChecker.checkProductLimit(store);
 
+        if (productDTO.getSellingPrice() != null && productDTO.getSellingPrice() < 0) {
+            throw new IllegalArgumentException("Selling price cannot be negative");
+        }
+        if (productDTO.getMrp() != null && productDTO.getMrp() < 0) {
+            throw new IllegalArgumentException("MRP cannot be negative");
+        }
+        if (productDTO.getSku() != null && !productDTO.getSku().trim().isEmpty()) {
+            String cleanSku = productDTO.getSku().trim();
+            if (productRepository.existsByStoreIdAndSkuIgnoreCase(store.getId(), cleanSku)) {
+                throw new IllegalArgumentException("Mã SKU '" + cleanSku + "' đã tồn tại trong cửa hàng này");
+            }
+            productDTO.setSku(cleanSku);
+        }
+
         Category category = null;
         if (productDTO.getCategoryId() != null) {
             category = categoryRepository.findById(productDTO.getCategoryId()).orElseThrow(
@@ -113,14 +127,25 @@ public class ProductServiceImpl implements ProductService {
         );
         validateStoreAccess(user, product.getStore());
 
-        if (productDTO.getName() != null) {
-            product.setName(productDTO.getName());
+        if (productDTO.getSellingPrice() != null && productDTO.getSellingPrice() < 0) {
+            throw new IllegalArgumentException("Selling price cannot be negative");
+        }
+        if (productDTO.getMrp() != null && productDTO.getMrp() < 0) {
+            throw new IllegalArgumentException("MRP cannot be negative");
+        }
+        if (productDTO.getSku() != null && !productDTO.getSku().trim().isEmpty()) {
+            String cleanSku = productDTO.getSku().trim();
+            if (product.getStore() != null
+                    && productRepository.existsByStoreIdAndSkuIgnoreCaseAndIdNot(product.getStore().getId(), cleanSku, id)) {
+                throw new IllegalArgumentException("Mã SKU '" + cleanSku + "' đã tồn tại trong cửa hàng này");
+            }
+            product.setSku(cleanSku);
+        }
+        if (productDTO.getName() != null && !productDTO.getName().trim().isEmpty()) {
+            product.setName(productDTO.getName().trim());
         }
         if (productDTO.getDescription() != null) {
-            product.setDescription(productDTO.getDescription());
-        }
-        if (productDTO.getSku() != null) {
-            product.setSku(productDTO.getSku());
+            product.setDescription(productDTO.getDescription().trim());
         }
         if (productDTO.getImage() != null) {
             product.setImage(productDTO.getImage());
@@ -167,11 +192,7 @@ public class ProductServiceImpl implements ProductService {
             inventoryRepository.deleteAll(inventories);
         }
 
-        List<OrderItem> orderItems = orderItemRepository.findByProductId(id);
-        for (OrderItem item : orderItems) {
-            item.setProduct(null);
-            orderItemRepository.save(item);
-        }
+        orderItemRepository.unlinkProductFromOrderItems(id);
 
         productRepository.delete(product);
     }

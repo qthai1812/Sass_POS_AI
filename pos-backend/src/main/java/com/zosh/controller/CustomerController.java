@@ -1,6 +1,7 @@
 package com.zosh.controller;
 
 import com.zosh.modal.Customer;
+
 import com.zosh.payload.response.ApiResponse;
 import com.zosh.service.CustomerService;
 import lombok.RequiredArgsConstructor;
@@ -10,31 +11,29 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequiredArgsConstructor
 @RequestMapping("/api/customers")
+@RequiredArgsConstructor
 public class CustomerController {
 
     private final CustomerService customerService;
 
     @PostMapping
-    public ResponseEntity<Customer> create(@RequestBody Customer customer) {
+    public ResponseEntity<Customer> createCustomer(
+            @RequestBody Customer customer
+    ) throws Exception {
         return ResponseEntity.ok(customerService.createCustomer(customer));
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<Customer> getById(@PathVariable Long id) throws Exception {
-        return ResponseEntity.ok(customerService.getCustomer(id));
-    }
-
     @PutMapping("/{id}")
-    public ResponseEntity<Customer> update(
+    public ResponseEntity<Customer> updateCustomer(
             @PathVariable Long id,
-            @RequestBody Customer customer) throws Exception {
+            @RequestBody Customer customer
+    ) throws Exception {
         return ResponseEntity.ok(customerService.updateCustomer(id, customer));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse> delete(
+    public ResponseEntity<ApiResponse> deleteCustomer(
             @PathVariable Long id
     ) throws Exception {
         customerService.deleteCustomer(id);
@@ -49,9 +48,11 @@ public class CustomerController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<Customer>> search(
-            @RequestParam String q
+    public ResponseEntity<List<Customer>> searchCustomers(
+            @RequestParam(required = false, defaultValue = "") String keyword,
+            @RequestParam(required = false) String q
     ) throws Exception {
-        return ResponseEntity.ok(customerService.searchCustomers(q));
+        String query = (keyword != null && !keyword.isBlank()) ? keyword : (q != null ? q : "");
+        return ResponseEntity.ok(customerService.searchCustomers(query));
     }
 }

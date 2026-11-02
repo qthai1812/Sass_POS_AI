@@ -23,12 +23,19 @@ import {
   getSalesByCategory,
 } from "@/Redux Toolkit/features/storeAnalytics/storeAnalyticsThunks";
 import { useToast } from "@/components/ui/use-toast";
+import { useNavigate } from "react-router";
+import { Lock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import usePlanEntitlements from "@/hooks/usePlanEntitlements";
 import AiBusinessCopilotCard from "@/components/ai/AiBusinessCopilotCard";
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"];
 
 export default function Reports() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { entitlements } = usePlanEntitlements();
+  const hasAdvancedReports = entitlements?.features?.advancedReports !== false;
   const { toast } = useToast();
   const { userProfile } = useSelector((state) => state.user);
   const { store } = useSelector((state) => state.store);
@@ -53,10 +60,10 @@ export default function Reports() {
   }, [dispatch, toast, userProfile?.id]);
 
   useEffect(() => {
-    if (userProfile?.id) {
+    if (userProfile?.id && hasAdvancedReports) {
       fetchReportsData();
     }
-  }, [fetchReportsData, userProfile?.id]);
+  }, [fetchReportsData, userProfile?.id, hasAdvancedReports]);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -95,6 +102,24 @@ export default function Reports() {
     };
     return config;
   }, {});
+
+  if (!hasAdvancedReports) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight">Reports & Analytics</h1>
+        <Card className="p-8 text-center space-y-4">
+          <Lock className="w-12 h-12 text-amber-500 mx-auto" />
+          <h2 className="text-xl font-bold">Tính năng Báo cáo Nâng cao (Advanced Reports) đang bị khóa</h2>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Gói cước hiện tại ({entitlements?.planName || "Miễn phí"}) không bao gồm báo cáo doanh thu theo tháng và danh mục.
+          </p>
+          <Button onClick={() => navigate("/store/upgrade")} className="bg-emerald-600 hover:bg-emerald-700">
+            Nâng cấp gói cước ngay
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

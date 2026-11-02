@@ -206,6 +206,21 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        Map<Long, Integer> mergedQtyByProductId = new java.util.LinkedHashMap<>();
+        for (OrderItemDTO itemDto : orderDTO.getItems()) {
+            if (itemDto.getProductId() == null) {
+                throw new IllegalArgumentException("Product ID is required for each order item");
+            }
+            mergedQtyByProductId.merge(itemDto.getProductId(), itemDto.getQuantity(), Integer::sum);
+        }
+
+        List<OrderItemDTO> normalizedItems = mergedQtyByProductId.entrySet().stream()
+                .map(e -> OrderItemDTO.builder()
+                        .productId(e.getKey())
+                        .quantity(e.getValue())
+                        .build())
+                .collect(Collectors.toList());
+
         Customer customer = null;
         Long reqCustomerId = orderDTO.getCustomerId() != null
                 ? orderDTO.getCustomerId()
@@ -233,14 +248,14 @@ public class OrderServiceImpl implements OrderService {
                 .status(orderDTO.getStatus() != null ? orderDTO.getStatus() : OrderStatus.COMPLETED)
                 .build();
 
-        List<Long> productIds = orderDTO.getItems().stream()
+        List<Long> productIds = normalizedItems.stream()
                 .map(OrderItemDTO::getProductId)
                 .distinct()
                 .collect(Collectors.toList());
         Map<Long, Product> productMap = productRepository.findAllById(productIds).stream()
                 .collect(Collectors.toMap(Product::getId, Function.identity()));
 
-        List<OrderItem> orderItems = orderDTO.getItems().stream()
+        List<OrderItem> orderItems = normalizedItems.stream()
                 .map(itemDto -> {
                     Product product = productMap.get(itemDto.getProductId());
                     if (product == null) {

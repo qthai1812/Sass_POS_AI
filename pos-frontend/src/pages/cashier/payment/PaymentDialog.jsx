@@ -281,6 +281,8 @@ const PaymentDialog = ({
               Number(item.quantity || 1),
           })),
           paymentType: normalizedSelected,
+          paymentSessionId:
+            thirdPartyInfo?.sessionId || gatewaySession?.sessionId || null,
           note: paymentNote,
         };
 

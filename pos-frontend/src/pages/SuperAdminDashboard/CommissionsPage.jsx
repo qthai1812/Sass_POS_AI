@@ -113,18 +113,14 @@ export default function CommissionsPage() {
       }
 
       try {
-        if (selectedCommission.rawStore) {
-          await dispatch(
-            updateStore({
-              id: selectedCommission.id,
-              storeData: {
-                ...selectedCommission.rawStore,
-                brand: selectedCommission.storeName,
-                commissionRate: rate,
-              },
-            }),
-          ).unwrap();
-        }
+        await dispatch(
+          updateStore({
+            id: selectedCommission.id,
+            storeData: {
+              commissionRate: rate,
+            },
+          }),
+        ).unwrap();
 
         setRateOverrides((prev) => ({
           ...prev,

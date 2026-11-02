@@ -18,10 +18,12 @@ import {
   Building,
   Ban,
   CheckCircle,
+  Trash2,
 } from "lucide-react";
 import {
   getStoreById,
   moderateStore,
+  deleteStore,
 } from "../../../Redux Toolkit/features/store/storeThunks";
 import StoreStatusBadge from "./StoreStatusBadge";
 import { formatDateTime } from "../../../utils/formateDate";
@@ -52,6 +54,28 @@ export default function StoreDetailsPage() {
       toast({
         title: "Update Failed",
         description: err || "Failed to update store status",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteStore = async () => {
+    if (!store?.id) return;
+    const confirmDelete = window.confirm(
+      `Bạn có chắc chắn muốn xóa vĩnh viễn cửa hàng "${store.brand}" (#${store.id})?\nToàn bộ chi nhánh, sản phẩm và đơn hàng của cửa hàng này sẽ bị xóa!`
+    );
+    if (!confirmDelete) return;
+    try {
+      await dispatch(deleteStore(store.id)).unwrap();
+      toast({
+        title: "Đã xóa cửa hàng",
+        description: `Cửa hàng "${store.brand}" đã được xóa thành công.`,
+      });
+      navigate("/super-admin/stores");
+    } catch (err) {
+      toast({
+        title: "Không thể xóa cửa hàng",
+        description: typeof err === "string" ? err : "Lỗi khi xóa cửa hàng",
         variant: "destructive",
       });
     }
@@ -89,12 +113,20 @@ export default function StoreDetailsPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => handleStatusChange("BLOCKED")}
-                className="text-red-600 border-red-200 hover:bg-red-50"
+                className="text-amber-600 border-amber-200 hover:bg-amber-50"
               >
                 <Ban className="w-4 h-4 mr-1" />
                 Block Store
               </Button>
             )}
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDeleteStore}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Delete Store
+            </Button>
           </div>
         )}
       </div>
@@ -122,53 +154,87 @@ export default function StoreDetailsPage() {
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
+            {/* Store Information */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <User className="w-5 h-5" />
-                  Owner Information
-                </CardTitle>
+                <CardTitle className="text-lg">Store Information</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <User className="w-4 h-4 text-muted-foreground" />
-                  <span className="font-medium">
-                    {store.storeAdmin?.fullName || "-"}
-                  </span>
+                  <Building className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Brand Name</p>
+                    <p className="font-medium">{store.brand}</p>
+                  </div>
                 </div>
+
+                {store.description && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Description</p>
+                    <p className="font-medium">{store.description}</p>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-3">
-                  <Phone className="w-4 h-4 text-muted-foreground" />
-                  <span>{store.contact?.phone || "-"}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Mail className="w-4 h-4 text-muted-foreground" />
-                  <span>{store.contact?.email || "-"}</span>
+                  <Calendar className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Registered</p>
+                    <p className="font-medium">
+                      {formatDateTime(store.createdAt)}
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
+            {/* Admin Information */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Building className="w-5 h-5" />
-                  Store Information
-                </CardTitle>
+                <CardTitle className="text-lg">Store Admin</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <MapPin className="w-4 h-4 text-muted-foreground" />
-                  <span>
-                    {store.contact?.address || "Address not provided"}
-                  </span>
+                  <User className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Name</p>
+                    <p className="font-medium">
+                      {store.storeAdmin?.fullName || "-"}
+                    </p>
+                  </div>
                 </div>
+
                 <div className="flex items-center gap-3">
-                  <Calendar className="w-4 h-4 text-muted-foreground" />
-                  <span>Registered on {formatDateTime(store.createdAt)}</span>
+                  <Mail className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Email</p>
+                    <p className="font-medium">
+                      {store.storeAdmin?.email ||
+                        store.contact?.email ||
+                        "-"}
+                    </p>
+                  </div>
                 </div>
-                {store.description && (
-                  <p className="text-sm text-muted-foreground pt-2 border-t">
-                    {store.description}
-                  </p>
+
+                <div className="flex items-center gap-3">
+                  <Phone className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Phone</p>
+                    <p className="font-medium">
+                      {store.contact?.phone ||
+                        store.storeAdmin?.phone ||
+                        "-"}
+                    </p>
+                  </div>
+                </div>
+
+                {store.contact?.address && (
+                  <div className="flex items-center gap-3">
+                    <MapPin className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Address</p>
+                      <p className="font-medium">{store.contact.address}</p>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>

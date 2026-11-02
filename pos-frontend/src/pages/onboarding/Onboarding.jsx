@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import OwnerDetailsForm from './OwnerDetailsForm';
 import StoreDetailsForm from './StoreDetailsForm';
-import { signup } from '../../Redux Toolkit/features/auth/authThunk';
+import { signup, login } from '../../Redux Toolkit/features/auth/authThunk';
 import { createStore, getStoreByAdmin } from '../../Redux Toolkit/features/store/storeThunks';
 import { getUserProfile } from '../../Redux Toolkit/features/user/userThunks';
 import { useNavigate } from 'react-router';
@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router';
 const Onboarding = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { userProfile } = useSelector((state) => state.user);
 
   const [step, setStep] = useState(1);
   const [fadeIn, setFadeIn] = useState(true);
@@ -35,8 +36,13 @@ const Onboarding = () => {
         try {
           const userRes = await dispatch(getUserProfile(jwt)).unwrap();
           if (userRes && userRes.role === 'ROLE_STORE_ADMIN') {
+            setFormData((prev) => ({
+              ...prev,
+              fullName: userRes.fullName || prev.fullName,
+              email: userRes.email || prev.email,
+            }));
             try {
-              const storeRes = await dispatch(getStoreByAdmin(jwt)).unwrap();
+              const storeRes = await dispatch(getStoreByAdmin()).unwrap();
               if (storeRes && storeRes.id) {
                 navigate('/store');
                 return;
@@ -78,12 +84,45 @@ const Onboarding = () => {
           setFadeIn(true);
         }, 150);
       } catch (err) {
+        const errMsg = typeof err === 'string' ? err : err?.message || '';
+        if (errMsg.toLowerCase().includes('already registered')) {
+          try {
+            const loginRes = await dispatch(login({
+              email: updatedFormData.email,
+              password: updatedFormData.password,
+            })).unwrap();
+            if (loginRes?.jwt) {
+              localStorage.setItem('jwt', loginRes.jwt);
+            }
+            try {
+              const storeRes = await dispatch(getStoreByAdmin()).unwrap();
+              if (storeRes && storeRes.id) {
+                navigate('/store');
+                return;
+              }
+            } catch {
+              // No store yet, proceed to step 2
+            }
+            setFadeIn(false);
+            setTimeout(() => {
+              setStep(2);
+              setFadeIn(true);
+            }, 150);
+            setLocalLoading(false);
+            return;
+          } catch {
+            setLocalError('This email is already registered. Please check your password or login.');
+            setLocalLoading(false);
+            return;
+          }
+        }
         setLocalError(err || 'Signup failed');
       }
       setLocalLoading(false);
     } else if (step === 2) {
       setLocalLoading(true);
       try {
+        const adminEmail = updatedFormData.email || userProfile?.email || undefined;
         // Send nested contact object matching Backend StoreDTO.java
         await dispatch(createStore({
           brand: updatedFormData.storeName,
@@ -91,10 +130,13 @@ const Onboarding = () => {
           description: `${updatedFormData.storeName} - ${updatedFormData.storeType}`,
           contact: {
             address: updatedFormData.storeAddress,
-            email: updatedFormData.email || undefined,
+            email: adminEmail,
           },
         })).unwrap();
-        await dispatch(getUserProfile(localStorage.getItem('jwt'))).unwrap();
+        const jwt = localStorage.getItem('jwt');
+        if (jwt) {
+          await dispatch(getUserProfile(jwt)).unwrap();
+        }
         navigate('/store');
       } catch (err) {
         setLocalError(err || 'Store creation failed');

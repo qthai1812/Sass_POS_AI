@@ -252,4 +252,59 @@ public class InventoryServiceImpl implements InventoryService {
         keeper.setQuantity(current + quantity);
         inventoryRepository.save(keeper);
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void transferInventory(Long productId, Long fromBranchId, Long toBranchId, int quantity) throws Exception {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("Số lượng chuyển kho phải lớn hơn 0");
+        }
+        if (fromBranchId == null || toBranchId == null || fromBranchId.equals(toBranchId)) {
+            throw new IllegalArgumentException("Chi nhánh nguồn và chi nhánh đích phải khác nhau");
+        }
+
+        Branch sourceBranch = branchRepository.findById(fromBranchId)
+                .orElseThrow(() -> new Exception("Không tìm thấy chi nhánh nguồn: " + fromBranchId));
+        Branch targetBranch = branchRepository.findById(toBranchId)
+                .orElseThrow(() -> new Exception("Không tìm thấy chi nhánh đích: " + toBranchId));
+
+        if (sourceBranch.getStore() == null || targetBranch.getStore() == null
+                || !sourceBranch.getStore().getId().equals(targetBranch.getStore().getId())) {
+            throw new IllegalArgumentException("Hai chi nhánh không thuộc cùng một cửa hàng");
+        }
+
+        com.zosh.modal.User currentUser = accessControl.currentUser();
+        accessControl.assertCanManageBranch(currentUser, sourceBranch);
+        planLimitChecker.requireFeature(sourceBranch.getStore(), PlanFeature.INVENTORY);
+        planLimitChecker.requireFeature(sourceBranch.getStore(), PlanFeature.MULTI_LOCATION);
+
+        // Khóa các chi nhánh theo thứ tự ID để tránh Deadlock khi có 2 luồng chuyển kho chéo nhau
+        Long firstBranchLock = Math.min(fromBranchId, toBranchId);
+        Long secondBranchLock = Math.max(fromBranchId, toBranchId);
+        inventoryRepository.findAllByProductIdAndBranchIdWithLock(productId, firstBranchLock);
+        inventoryRepository.findAllByProductIdAndBranchIdWithLock(productId, secondBranchLock);
+
+        // Trừ tồn kho ở chi nhánh nguồn (có Pessimistic Write Lock)
+        deductInventory(productId, fromBranchId, quantity);
+
+        // Cộng tồn kho vào chi nhánh đích (tự động tạo bản ghi Inventory nếu chi nhánh đích chưa có SP này)
+        List<Inventory> targetExisting = inventoryRepository
+                .findAllByProductIdAndBranchIdWithLock(productId, toBranchId);
+        if (targetExisting.isEmpty()) {
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new Exception("Product not found: " + productId));
+            Inventory newInv = Inventory.builder()
+                    .branch(targetBranch)
+                    .product(product)
+                    .quantity(quantity)
+                    .minStockLevel(10)
+                    .build();
+            inventoryRepository.save(newInv);
+        } else {
+            restoreInventory(productId, toBranchId, quantity);
+        }
+
+        log.info("Transferred {} units of product {} from branch {} to branch {}",
+                quantity, productId, fromBranchId, toBranchId);
+    }
 }
