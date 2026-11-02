@@ -120,4 +120,14 @@ public class AccessControlService {
             throw new AccessDeniedException("You do not have permission to manage this branch");
         }
     }
+
+    /** Chỉ cho phép Super Admin, Chủ cửa hàng hoặc Quản lý cấp chuỗi (chặn Branch Manager xóa dữ liệu kiểm toán). */
+    public void assertStoreLevelOrAdmin(User user, Store store) {
+        if (user != null && user.getRole() == UserRole.ROLE_ADMIN) {
+            return;
+        }
+        if (!isStoreLevelUser(user, store)) {
+            throw new AccessDeniedException("Chỉ Chủ cửa hàng (Store Admin) hoặc Quản lý chuỗi (Store Manager) mới có quyền xóa vĩnh viễn dữ liệu này.");
+        }
+    }
 }

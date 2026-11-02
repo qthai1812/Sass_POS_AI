@@ -47,10 +47,13 @@ public class OrderServiceImpl implements OrderService {
     private final RefundRepository refundRepository;
     private final ShiftReportRepository shiftReportRepository;
     private final AccessControlService accessControl;
+    private final com.zosh.service.PaymentGatewayService paymentGatewayService;
 
     private static final double VND_PER_POINT_EARNED = 10000.0;
     private static final double VND_PER_POINT_REDEEMED = 1000.0;
     private static final double DEFAULT_TAX_RATE = 10.0;
+    // Giới hạn chiết khấu trực tiếp (không có mã Coupon) của Thu ngân tối đa 10% (đặt = 0.0 nếu muốn cấm hoàn toàn)
+    private static final double MAX_CASHIER_MANUAL_DISCOUNT_PERCENT = 10.0;
     private static final Pattern POINTS_USED_PATTERN = Pattern.compile("-(\\d+)\\s*pts");
 
     /** Số điểm đã dùng để giảm giá trong đơn (được ghi trong couponCode dạng "POINTS (-N pts)"). */
@@ -319,6 +322,15 @@ public class OrderServiceImpl implements OrderService {
                 appliedCouponCode = coupon.getCode();
             }
         } else if (orderDTO.getDiscountAmount() != null && orderDTO.getDiscountAmount() > 0) {
+            if (cashier.getRole() == UserRole.ROLE_BRANCH_CASHIER) {
+                double maxAllowedManualDiscount = Math.round(subTotal * (MAX_CASHIER_MANUAL_DISCOUNT_PERCENT / 100.0));
+                if (orderDTO.getDiscountAmount() > maxAllowedManualDiscount + 0.01) {
+                    throw new org.springframework.security.access.AccessDeniedException(
+                            "Thu ngân không được giảm giá trực tiếp vượt quá " + (int) MAX_CASHIER_MANUAL_DISCOUNT_PERCENT
+                                    + "% tổng đơn khi không có mã Coupon hợp lệ."
+                    );
+                }
+            }
             discountAmount = Math.min(orderDTO.getDiscountAmount(), subTotal);
         }
 
@@ -352,6 +364,19 @@ public class OrderServiceImpl implements OrderService {
             } catch (Exception e) {
                 throw new Exception("Failed to deduct inventory for product id " + productId + ": " + e.getMessage());
             }
+        }
+
+        // Chỉ tiêu thụ (consume) phiên thanh toán SAU KHI đã kiểm tra và trừ tồn kho thành công
+        if ((order.getPaymentType() == PaymentType.CARD || order.getPaymentType() == PaymentType.UPI)
+                && orderDTO.getPaymentSessionId() != null
+                && !orderDTO.getPaymentSessionId().isBlank()
+                && totalAmount > 0) {
+            Long storeIdForVerify = finalBranch.getStore() != null ? finalBranch.getStore().getId() : null;
+            paymentGatewayService.verifyAndConsumePosOrderPayment(
+                    orderDTO.getPaymentSessionId(),
+                    storeIdForVerify,
+                    totalAmount
+            );
         }
 
         if (customer != null && order.getStatus() == OrderStatus.COMPLETED) {
@@ -490,7 +515,10 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(id).orElseThrow(
                 () -> new Exception("Order not found with id " + id)
         );
-        accessControl.assertCanManageBranch(userService.getCurrentUser(), order.getBranch());
+        Store orderStore = order.getBranch() != null ? order.getBranch().getStore()
+                : (order.getCustomer() != null ? order.getCustomer().getStore()
+                : accessControl.resolveStoreOfUser(order.getCashier()));
+        accessControl.assertStoreLevelOrAdmin(userService.getCurrentUser(), orderStore);
 
         List<Refund> orderRefunds = refundRepository.findByOrderId(id);
 

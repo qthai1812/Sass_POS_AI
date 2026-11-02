@@ -487,6 +487,52 @@ public class PaymentGatewayService {
         return sanitizePublicView(matched);
     }
 
+    /**
+     * Xác minh giao dịch thanh toán đơn hàng tại quầy POS (CARD / UPI) khi có mã giao dịch / session từ cổng thanh toán.
+     */
+    public synchronized PaymentSessionDTO verifyAndConsumePosOrderPayment(
+            String txOrSessionId,
+            Long branchStoreId,
+            double requiredAmount
+    ) {
+        if (txOrSessionId == null || txOrSessionId.isBlank()) {
+            return null;
+        }
+        String key = txOrSessionId.trim();
+        PaymentSessionDTO matched = sessions.get(key);
+        if (matched == null) {
+            matched = sessions.values().stream()
+                    .filter(s -> s != null && (key.equalsIgnoreCase(s.getTransactionId()) || key.equalsIgnoreCase(s.getSessionId())))
+                    .findFirst()
+                    .orElseThrow(() -> new AccessDeniedException(
+                            "Không tìm thấy phiên thanh toán '" + key + "' trên cổng thanh toán."
+                    ));
+        }
+        if (!"SUCCESS".equalsIgnoreCase(matched.getStatus())) {
+            throw new AccessDeniedException(
+                    "Giao dịch '" + key + "' chưa hoàn tất thanh toán (trạng thái: " + matched.getStatus() + ")."
+            );
+        }
+        if (matched.isConsumed()) {
+            throw new AccessDeniedException(
+                    "Mã giao dịch '" + key + "' đã được sử dụng cho một đơn hàng khác."
+            );
+        }
+        if (matched.getStoreId() != null && branchStoreId != null && !matched.getStoreId().equals(branchStoreId)) {
+            throw new AccessDeniedException("Phiên thanh toán không thuộc cửa hàng hiện tại.");
+        }
+        double expectedVnd = Math.max(1000.0, Math.round(requiredAmount));
+        double paidAmount = matched.getAmount() != null ? matched.getAmount() : 0.0;
+        if (paidAmount + 1.0 < expectedVnd) {
+            throw new AccessDeniedException(
+                    "Số tiền đã thanh toán (" + paidAmount + "đ) thấp hơn tổng tiền đơn hàng (" + expectedVnd + "đ)."
+            );
+        }
+        matched.setConsumed(true);
+        matched.setUpdatedAt(LocalDateTime.now());
+        return sanitizePublicView(matched);
+    }
+
     private boolean isValidExpiry(String expiry) {
         if (expiry == null || !expiry.matches("^(0[1-9]|1[0-2])/\\d{2}$")) {
             return false;

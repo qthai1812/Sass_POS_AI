@@ -25,6 +25,11 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class PlanLimitChecker {
 
+    // Hạn mức mặc định khi cửa hàng chưa đăng ký gói hoặc gói đã hết hạn (EXPIRED)
+    private static final int UNSUBSCRIBED_MAX_BRANCHES = 1;
+    private static final int UNSUBSCRIBED_MAX_USERS = 3;
+    private static final int UNSUBSCRIBED_MAX_PRODUCTS = 30;
+
     private final SubscriptionRepository subscriptionRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final BranchRepository branchRepository;
@@ -68,8 +73,9 @@ public class PlanLimitChecker {
         if (store == null) return false;
         Optional<SubscriptionPlan> plan = activePlan(store);
         if (plan.isEmpty()) {
-            // Nếu chưa đăng ký gói hoặc gói hết hạn: khóa chặt AI_COPILOT
-            return feature != PlanFeature.AI_COPILOT;
+            // Khi chưa có gói hoặc gói hết hạn: chỉ cho phép tính năng tồn kho cơ bản (INVENTORY),
+            // khóa toàn bộ tính năng cao cấp (AI_COPILOT, ADVANCED_REPORTS, MULTI_LOCATION,...)
+            return feature == PlanFeature.INVENTORY;
         }
         return feature.isEnabledIn(plan.get());
     }
@@ -77,16 +83,19 @@ public class PlanLimitChecker {
     public void requireFeature(Store store, PlanFeature feature) throws UserException {
         if (store == null) return;
         Optional<SubscriptionPlan> plan = activePlan(store);
-        if (plan.isPresent() && !feature.isEnabledIn(plan.get())) {
+        if (plan.isEmpty()) {
+            if (!hasFeature(store, feature)) {
+                throw new UserException("Cửa hàng chưa có gói đăng ký đang hoạt động. Vui lòng đăng ký gói có tính năng \""
+                        + feature.getLabel() + "\" để sử dụng.");
+            }
+            return;
+        }
+        if (!feature.isEnabledIn(plan.get())) {
             throw new UserException("Your current plan \"" + plan.get().getName() + "\" does not include \""
                     + feature.getLabel() + "\". Please upgrade your plan to use this feature.");
         }
     }
 
-    /**
-     * Bắt buộc Store phải có gói ACTIVE/TRIAL còn hạn VÀ gói đó phải bật tính năng được yêu cầu.
-     * Dùng cho AI_COPILOT để đảm bảo khi không active gói hoặc gói không bật AI thì cả Store, Branch, Cashier đều không dùng được.
-     */
     public void requireActivePlanFeature(Store store, PlanFeature feature) throws UserException {
         if (store == null) {
             throw new UserException("Store not found for verifying subscription plan.");
@@ -104,9 +113,15 @@ public class PlanLimitChecker {
 
     public void checkBranchLimit(Store store) throws UserException {
         if (store == null) return;
-        Optional<SubscriptionPlan> plan = activePlan(store);
-        if (plan.isEmpty()) return;
         long current = branchRepository.countByStoreId(store.getId());
+        Optional<SubscriptionPlan> plan = activePlan(store);
+        if (plan.isEmpty()) {
+            if (current >= UNSUBSCRIBED_MAX_BRANCHES) {
+                throw new UserException("Cửa hàng chưa đăng ký gói cước chỉ được tạo tối đa "
+                        + UNSUBSCRIBED_MAX_BRANCHES + " chi nhánh. Vui lòng nâng cấp gói để mở thêm chi nhánh.");
+            }
+            return;
+        }
         if (!PlanFeature.MULTI_LOCATION.isEnabledIn(plan.get()) && current >= 1) {
             throw new UserException("Your current plan \"" + plan.get().getName() + "\" does not include \""
                     + PlanFeature.MULTI_LOCATION.getLabel() + "\" and allows only 1 branch. "
@@ -120,9 +135,16 @@ public class PlanLimitChecker {
 
     public void checkProductLimit(Store store) throws UserException {
         if (store == null) return;
+        long current = productRepository.countByStoreId(store.getId());
         Optional<SubscriptionPlan> plan = activePlan(store);
-        if (plan.isPresent()
-                && exceeds(plan.get().getMaxProducts(), productRepository.countByStoreId(store.getId()))) {
+        if (plan.isEmpty()) {
+            if (current >= UNSUBSCRIBED_MAX_PRODUCTS) {
+                throw new UserException("Cửa hàng chưa đăng ký gói cước chỉ được tạo tối đa "
+                        + UNSUBSCRIBED_MAX_PRODUCTS + " sản phẩm. Vui lòng nâng cấp gói để thêm sản phẩm.");
+            }
+            return;
+        }
+        if (exceeds(plan.get().getMaxProducts(), current)) {
             throw new UserException("Your current plan \"" + plan.get().getName() + "\" allows at most "
                     + plan.get().getMaxProducts() + " products. Please upgrade your plan to add more.");
         }
@@ -130,9 +152,16 @@ public class PlanLimitChecker {
 
     public void checkUserLimit(Store store) throws UserException {
         if (store == null) return;
+        long current = userRepository.countByStore(store);
         Optional<SubscriptionPlan> plan = activePlan(store);
-        if (plan.isPresent()
-                && exceeds(plan.get().getMaxUsers(), userRepository.countByStore(store))) {
+        if (plan.isEmpty()) {
+            if (current >= UNSUBSCRIBED_MAX_USERS) {
+                throw new UserException("Cửa hàng chưa đăng ký gói cước chỉ được tạo tối đa "
+                        + UNSUBSCRIBED_MAX_USERS + " nhân sự. Vui lòng nâng cấp gói để thêm nhân viên.");
+            }
+            return;
+        }
+        if (exceeds(plan.get().getMaxUsers(), current)) {
             throw new UserException("Your current plan \"" + plan.get().getName() + "\" allows at most "
                     + plan.get().getMaxUsers() + " users. Please upgrade your plan to add more.");
         }
@@ -180,7 +209,7 @@ public class PlanLimitChecker {
         for (PlanFeature f : PlanFeature.values()) {
             boolean enabled = plan.isPresent()
                     ? f.isEnabledIn(plan.get())
-                    : (f != PlanFeature.AI_COPILOT);
+                    : (f == PlanFeature.INVENTORY);
             features.put(f.getKey(), enabled);
         }
 
@@ -197,13 +226,19 @@ public class PlanLimitChecker {
             dto.setUsedUsers((int) userRepository.countByStore(store));
         }
 
-        plan.ifPresent(p -> {
+        if (plan.isPresent()) {
+            SubscriptionPlan p = plan.get();
             dto.setPlanId(String.valueOf(p.getId()));
             dto.setPlanName(p.getName());
             dto.setMaxBranches(p.getMaxBranches() != null && p.getMaxBranches() > 0 ? p.getMaxBranches() : null);
             dto.setMaxUsers(p.getMaxUsers() != null && p.getMaxUsers() > 0 ? p.getMaxUsers() : null);
             dto.setMaxProducts(p.getMaxProducts() != null && p.getMaxProducts() > 0 ? p.getMaxProducts() : null);
-        });
+        } else {
+            dto.setPlanName("Free Starter (Chưa đăng ký gói)");
+            dto.setMaxBranches(UNSUBSCRIBED_MAX_BRANCHES);
+            dto.setMaxUsers(UNSUBSCRIBED_MAX_USERS);
+            dto.setMaxProducts(UNSUBSCRIBED_MAX_PRODUCTS);
+        }
 
         return dto;
     }
