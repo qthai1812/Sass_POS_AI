@@ -15,14 +15,14 @@ import com.zosh.repository.PasswordResetTokenRepository;
 import com.zosh.repository.StoreRepository;
 import com.zosh.repository.UserRepository;
 import com.zosh.service.AuthService;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -31,12 +31,15 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.RestTemplate;
 
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -47,20 +50,19 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
+    private static final String SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send";
+
     private final UserRepository userRepository;
     private final StoreRepository storeRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final CustomUserImplementation customUserImplementation;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
-    private final JavaMailSender mailSender;
 
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
 
-    @Value("${spring.mail.username:}")
-    private String mailUsername;
-
+    // Đọc trực tiếp SendGrid API Key (SG.xxx) từ biến MAIL_PASSWORD hiện có
     @Value("${spring.mail.password:}")
     private String mailPassword;
 
@@ -108,7 +110,6 @@ public class AuthServiceImpl implements AuthService {
             if (isFailure) {
                 tracker.failedAttempts++;
             }
-            // Nếu spam quá 10 request hoặc sai quá 5 lần trong 15 phút -> Khóa tạm thời 15 phút
             if (tracker.requestCount > 10 || tracker.failedAttempts >= MAX_OTP_ATTEMPTS) {
                 tracker.blockedUntil = now.plusMinutes(15);
                 throw new UserException("Tài khoản/IP của bạn tạm thời bị chặn 15 phút do có quá nhiều thao tác bất thường.");
@@ -116,16 +117,10 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
-    /**
-     * Kiểm tra giới hạn đổi mật khẩu của User:
-     * 1. Phải cách lần đổi mật khẩu gần nhất tối thiểu 5 phút.
-     * 2. Không quá 3 lần trong 1 ngày.
-     */
     private void enforcePasswordChangeLimits(User user) throws UserException {
         LocalDateTime now = LocalDateTime.now();
         LocalDate today = LocalDate.now();
 
-        // 1. Kiểm tra khoảng cách 5 phút giữa 2 lần đổi mật khẩu
         if (user.getPasswordChangedAt() != null) {
             long secondsSinceLastChange = Duration.between(user.getPasswordChangedAt(), now).getSeconds();
             long requiredSeconds = PASSWORD_CHANGE_COOLDOWN_MINUTES * 60L;
@@ -134,13 +129,12 @@ public class AuthServiceImpl implements AuthService {
                 long mins = remainingSeconds / 60;
                 long secs = remainingSeconds % 60;
                 throw new UserException(String.format(
-                        "Bạn vừa đổi mật khẩu gần đây. Vui lòng đợi %d phút %d giây nữa mới được đổi mật khẩu tiếp (tối소 5 phút/lần).",
+                        "Bạn vừa đổi mật khẩu gần đây. Vui lòng đợi %d phút %d giây nữa mới được đổi mật khẩu tiếp (tối thiểu 5 phút/lần).",
                         mins, secs
                 ));
             }
         }
 
-        // 2. Kiểm tra tối đa 3 lần đổi mật khẩu trong 1 ngày
         int countToday = 0;
         if (today.equals(user.getPasswordChangeCountDate()) && user.getDailyPasswordChangeCount() != null) {
             countToday = user.getDailyPasswordChangeCount();
@@ -149,8 +143,6 @@ public class AuthServiceImpl implements AuthService {
             throw new UserException("Bạn đã đạt giới hạn đổi mật khẩu tối đa 3 lần trong ngày hôm nay. Vui lòng thử lại vào ngày mai.");
         }
     }
-
-    // ... [Giữ nguyên hàm signup() và login() hiện tại của bạn] ...
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -258,25 +250,66 @@ public class AuthServiceImpl implements AuthService {
         return authResponse;
     }
 
-    // Thêm hàm hỗ trợ bóc tách lỗi chi tiết từ phía Sender (SendGrid / JavaMail) trong AuthServiceImpl.java:
-    private String extractSenderErrorMessage(Throwable e) {
-        if (e == null) return "Lỗi không xác định từ máy chủ gửi mail.";
-        String rawMsg = e.getMessage() != null ? e.getMessage() : e.toString();
+    /**
+     * Gửi email qua SendGrid Web API v3 (HTTPS cổng 443) - Không bị Render gói Free chặn.
+     */
+    private void sendEmailViaSendGridApi(String toEmail, String subject, String htmlContent) throws UserException {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10000);
+        factory.setReadTimeout(10000);
+        RestTemplate restTemplate = new RestTemplate(factory);
 
-        if (rawMsg.contains("535")) {
-            return "Lỗi xác thực SendGrid (535): Sai API Key hoặc MAIL_USERNAME chưa đặt là 'apikey'. Chi tiết: " + rawMsg;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(mailPassword.trim());
+
+        Map<String, Object> payload = Map.of(
+                "personalizations", List.of(
+                        Map.of(
+                                "to", List.of(Map.of("email", toEmail.trim())),
+                                "subject", subject
+                        )
+                ),
+                "from", Map.of(
+                        "email", mailFrom.trim(),
+                        "name", mailFromName != null ? mailFromName.trim() : "POS Pro Security"
+                ),
+                "content", List.of(
+                        Map.of(
+                                "type", "text/html",
+                                "value", htmlContent
+                        )
+                )
+        );
+
+        HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, headers);
+
+        try {
+            ResponseEntity<String> response = restTemplate.postForEntity(SENDGRID_API_URL, requestEntity, String.class);
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new UserException("SendGrid Web API trả về mã lỗi: " + response.getStatusCode());
+            }
+        } catch (HttpStatusCodeException e) {
+            int status = e.getStatusCode().value();
+            String body = e.getResponseBodyAsString();
+            log.error("SendGrid Web API HTTP error {} while sending OTP to {}: {}", status, toEmail, body);
+
+            if (status == 401) {
+                throw new UserException("Lỗi xác thực SendGrid API (401): Sai API Key (MAIL_PASSWORD) hoặc Key đã bị khóa. Chi tiết: " + body);
+            }
+            if (status == 403) {
+                throw new UserException("Lỗi từ chối từ SendGrid API (403): Địa chỉ MAIL_FROM (" + mailFrom
+                        + ") chưa được xác thực (Single Sender Verification) trên SendGrid hoặc API Key chưa bật quyền Mail Send. Chi tiết: " + body);
+            }
+            throw new UserException("Lỗi từ SendGrid Web API (" + status + "): " + body);
+        } catch (Exception e) {
+            log.error("Unexpected error calling SendGrid Web API for {}: {}", toEmail, e.getMessage(), e);
+            throw new UserException("Không thể kết nối tới SendGrid Web API: " + e.getMessage());
         }
-        if (rawMsg.contains("550") || rawMsg.toLowerCase().contains("from address does not match a verified sender")) {
-            return "Lỗi từ chối người gửi từ SendGrid (550): Địa chỉ MAIL_FROM (" + mailFrom + ") chưa được xác thực (Single Sender Verification) trên SendGrid. Chi tiết: " + rawMsg;
-        }
-        if (rawMsg.toLowerCase().contains("connect timed out") || rawMsg.toLowerCase().contains(" could not connect to smtp host")) {
-            return "Lỗi kết nối mạng đến máy chủ SMTP (" + rawMsg + "). Vui lòng kiểm tra tường lửa hoặc cổng 587.";
-        }
-        return "Lỗi từ cổng gửi email (Sender): " + rawMsg;
     }
 
     // =========================================================================
-    // BƯỚC 1, 2, 3: NHẬN YÊU CẦU -> TẠO OTP 6 SỐ (5 PHÚT) -> GỬI QUA SENDGRID
+    // BƯỚC 1, 2, 3: NHẬN YÊU CẦU -> TẠO OTP 6 SỐ (5 PHÚT) -> GỬI QUA SENDGRID API
     // =========================================================================
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -286,15 +319,14 @@ public class AuthServiceImpl implements AuthService {
         }
         String cleanEmail = emailInput.trim().toLowerCase();
 
-        // Chặn hành vi spam theo IP và theo Email
         checkAndRecordSuspiciousBehavior("IP:" + clientIp, false);
         checkAndRecordSuspiciousBehavior("EMAIL:" + cleanEmail, false);
 
-        // Kiểm tra cấu hình SendGrid SMTP trước khi xử lý
-        boolean smtpConfigured = mailPassword != null && !mailPassword.isBlank()
+        boolean senderConfigured = mailPassword != null && !mailPassword.isBlank()
+                && !"abcd".equals(mailPassword.trim())
                 && mailFrom != null && !mailFrom.isBlank();
-        if (!smtpConfigured) {
-            throw new UserException("Lỗi cấu hình Sender: Thiếu MAIL_PASSWORD (SendGrid API Key) hoặc MAIL_FROM trong application.properties.");
+        if (!senderConfigured) {
+            throw new UserException("Lỗi cấu hình Sender: Thiếu MAIL_PASSWORD (SendGrid API Key) hoặc MAIL_FROM.");
         }
 
         final String genericSafeMessage = "Nếu email tồn tại trong hệ thống, hướng dẫn khôi phục đã được gửi";
@@ -306,10 +338,8 @@ public class AuthServiceImpl implements AuthService {
             return response;
         }
 
-        // Kiểm tra giới hạn đổi mật khẩu (5 phút/lần và tối đa 3 lần/ngày)
         enforcePasswordChangeLimits(user);
 
-        // Chặn gửi lại OTP liên tục trong vòng 60 giây
         Optional<PasswordResetToken> latestActiveToken =
                 passwordResetTokenRepository.findTopByUserIdAndUsedFalseOrderByCreatedAtDesc(user.getId());
         if (latestActiveToken.isPresent()) {
@@ -322,10 +352,8 @@ public class AuthServiceImpl implements AuthService {
             }
         }
 
-        // Vô hiệu hóa các OTP cũ chưa dùng của user này
         passwordResetTokenRepository.invalidateAllActiveTokensByUserId(user.getId());
 
-        // Sinh mã OTP 6 chữ số ngẫu nhiên (từ 000000 đến 999999)
         String otpCode = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
         String uniqueToken = UUID.randomUUID().toString();
 
@@ -342,38 +370,23 @@ public class AuthServiceImpl implements AuthService {
                 .build();
         passwordResetTokenRepository.save(resetToken);
 
-        // Bước 3: Gửi email chứa mã OTP qua SendGrid SMTP
-        try {
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-            helper.setFrom(new InternetAddress(mailFrom.trim(), mailFromName));
-            helper.setTo(user.getEmail());
-            helper.setSubject("[POS Pro] Mã xác thực OTP khôi phục mật khẩu: " + otpCode);
-
-            String htmlContent = """
-                    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px;">
-                        <h2 style="color: #111827; margin-top: 0;">Yêu cầu khôi phục mật khẩu</h2>
-                        <p style="color: #374151; font-size: 14px;">Xin chào <strong>%s</strong>,</p>
-                        <p style="color: #374151; font-size: 14px;">Mã xác thực OTP gồm 6 chữ số để đặt lại mật khẩu tài khoản POS Pro của bạn là:</p>
-                        <div style="background: #f3f4f6; padding: 16px; text-align: center; border-radius: 8px; margin: 20px 0;">
-                            <span style="font-size: 30px; font-weight: bold; letter-spacing: 8px; color: #059669;">%s</span>
-                        </div>
-                        <p style="color: #dc2626; font-size: 13px;"><strong>Lưu ý:</strong> Mã OTP này có hiệu lực trong vòng <strong>5 phút</strong> và chỉ sử dụng 1 lần duy nhất.</p>
-                        <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email này.</p>
+        String subject = "[POS Pro] Mã xác thực OTP khôi phục mật khẩu: " + otpCode;
+        String htmlContent = """
+                <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px;">
+                    <h2 style="color: #111827; margin-top: 0;">Yêu cầu khôi phục mật khẩu</h2>
+                    <p style="color: #374151; font-size: 14px;">Xin chào <strong>%s</strong>,</p>
+                    <p style="color: #374151; font-size: 14px;">Mã xác thực OTP gồm 6 chữ số để đặt lại mật khẩu tài khoản POS Pro của bạn là:</p>
+                    <div style="background: #f3f4f6; padding: 16px; text-align: center; border-radius: 8px; margin: 20px 0;">
+                        <span style="font-size: 30px; font-weight: bold; letter-spacing: 8px; color: #059669;">%s</span>
                     </div>
-                    """.formatted(user.getFullName(), otpCode);
+                    <p style="color: #dc2626; font-size: 13px;"><strong>Lưu ý:</strong> Mã OTP này có hiệu lực trong vòng <strong>5 phút</strong> và chỉ sử dụng 1 lần duy nhất.</p>
+                    <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email này.</p>
+                </div>
+                """.formatted(user.getFullName(), otpCode);
 
-            helper.setText(htmlContent, true);
-            mailSender.send(mimeMessage);
-            log.info("Đã gửi thành công email OTP khôi phục mật khẩu tới {}", user.getEmail());
-        } catch (MailException e) {
-            log.error("SendGrid SMTP error while sending OTP to {}: {}", cleanEmail, e.getMessage(), e);
-            // Trả về trực tiếp lỗi từ phía Sender để Frontend hiển thị
-            throw new UserException(extractSenderErrorMessage(e));
-        } catch (Exception e) {
-            log.error("Unexpected error sending OTP email to {}: {}", cleanEmail, e.getMessage(), e);
-            throw new UserException(extractSenderErrorMessage(e));
-        }
+        // Bước 3: Gửi qua SendGrid Web API (HTTPS 443)
+        sendEmailViaSendGridApi(user.getEmail(), subject, htmlContent);
+        log.info("Đã gửi thành công email OTP khôi phục mật khẩu qua SendGrid Web API tới {}", user.getEmail());
 
         ApiResponse response = new ApiResponse();
         response.setMessage(genericSafeMessage);
@@ -404,7 +417,6 @@ public class AuthServiceImpl implements AuthService {
                 .findTopByUserIdAndUsedFalseOrderByCreatedAtDesc(user.getId())
                 .orElseThrow(() -> new UserException("Không tìm thấy yêu cầu khôi phục mật khẩu hợp lệ hoặc mã đã được sử dụng."));
 
-        // Chống Replay Attack: kiểm tra đã dùng hoặc đã xác thực OTP chưa
         if (resetToken.isUsed() || resetToken.isOtpVerified()) {
             throw new UserException("Mã OTP này đã được sử dụng trước đó (Replay Attack Blocked). Vui lòng yêu cầu mã mới.");
         }
@@ -419,7 +431,6 @@ public class AuthServiceImpl implements AuthService {
             throw new UserException("Bạn đã nhập sai mã OTP quá 5 lần. Mã này đã bị hủy để bảo vệ tài khoản.");
         }
 
-        // Kiểm tra khớp OTP
         if (!cleanOtp.equals(resetToken.getOtpCode())) {
             resetToken.setAttemptCount(resetToken.getAttemptCount() + 1);
             int remaining = MAX_OTP_ATTEMPTS - resetToken.getAttemptCount();
@@ -433,7 +444,6 @@ public class AuthServiceImpl implements AuthService {
                     : "Bạn đã nhập sai quá số lần quy định. Vui lòng lấy mã OTP mới.");
         }
 
-        // OTP hợp lệ -> Cấp Reset Ticket ngắn hạn (5 phút) để chuyển sang Bước 5
         String resetTicket = UUID.randomUUID().toString() + "-" + UUID.randomUUID().toString();
         resetToken.setOtpVerified(true);
         resetToken.setResetTicket(resetTicket);
@@ -481,20 +491,16 @@ public class AuthServiceImpl implements AuthService {
 
         User user = resetToken.getUser();
 
-        // Kiểm tra nghiêm ngặt giới hạn: cách nhau ít nhất 5 phút và tối đa 3 lần/ngày
         enforcePasswordChangeLimits(user);
 
-        // Không cho phép đặt lại mật khẩu trùng với mật khẩu cũ
         if (passwordEncoder.matches(newPassword, user.getPassword())) {
             throw new UserException("Mật khẩu mới không được trùng với mật khẩu đang sử dụng.");
         }
 
-        // Băm mật khẩu bằng BCrypt và lưu đè
         LocalDateTime now = LocalDateTime.now();
         LocalDate today = LocalDate.now();
         user.setPassword(passwordEncoder.encode(newPassword));
 
-        // Cập nhật bộ đếm giới hạn trong ngày và mốc thời gian đổi mật khẩu (để thu hồi toàn bộ JWT cũ)
         int currentDailyCount = (today.equals(user.getPasswordChangeCountDate()) && user.getDailyPasswordChangeCount() != null)
                 ? user.getDailyPasswordChangeCount()
                 : 0;
@@ -503,7 +509,6 @@ public class AuthServiceImpl implements AuthService {
         user.setPasswordChangedAt(now);
         userRepository.save(user);
 
-        // Đánh dấu token đã sử dụng (chống Replay Attack)
         resetToken.setUsed(true);
         passwordResetTokenRepository.save(resetToken);
 
