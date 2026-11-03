@@ -1,5 +1,6 @@
 package com.zosh.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -20,12 +22,24 @@ import java.util.UUID;
 public class FileService {
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".webp", ".gif");
+    private static final Map<String, String> EXTENSION_CONTENT_TYPES = Map.of(
+            ".png", "image/png",
+            ".jpg", "image/jpeg",
+            ".jpeg", "image/jpeg",
+            ".webp", "image/webp",
+            ".gif", "image/gif"
+    );
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024L; // 5MB
 
     private final Path fileStorageLocation;
+    private final String publicBackendUrl;
 
-    public FileService() {
-        this.fileStorageLocation = Paths.get("uploads").toAbsolutePath().normalize();
+    public FileService(
+            @Value("${app.upload-dir:uploads}") String uploadDir,
+            @Value("${app.backend-url:}") String publicBackendUrl
+    ) {
+        this.publicBackendUrl = publicBackendUrl;
+        this.fileStorageLocation = Paths.get(uploadDir).toAbsolutePath().normalize();
         try {
             Files.createDirectories(this.fileStorageLocation);
         } catch (Exception ex) {
@@ -41,11 +55,6 @@ public class FileService {
             throw new IllegalArgumentException("File size exceeds maximum limit of 5MB");
         }
 
-        String contentType = file.getContentType();
-        if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
-            throw new IllegalArgumentException("Invalid file content type. Only image files are allowed");
-        }
-
         String rawName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "";
         String originalFileName = StringUtils.cleanPath(rawName);
         String fileExtension = "";
@@ -58,6 +67,13 @@ public class FileService {
             throw new IllegalArgumentException("Only image files (.png, .jpg, .jpeg, .webp, .gif) are allowed");
         }
 
+        String contentType = file.getContentType();
+        if (contentType != null
+                && !contentType.toLowerCase().startsWith("image/")
+                && !contentType.equalsIgnoreCase("application/octet-stream")) {
+            throw new IllegalArgumentException("Invalid file content type. Only image files are allowed");
+        }
+
         String newFileName = UUID.randomUUID() + fileExtension;
         Path targetLocation = this.fileStorageLocation.resolve(newFileName).normalize();
         if (!targetLocation.startsWith(this.fileStorageLocation)) {
@@ -65,6 +81,11 @@ public class FileService {
         }
 
         Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+
+        if (publicBackendUrl != null && !publicBackendUrl.isBlank()) {
+            String baseUrl = publicBackendUrl.trim().replaceAll("/+$", "");
+            return baseUrl + "/api/media/download/" + newFileName;
+        }
 
         return ServletUriComponentsBuilder.fromCurrentContextPath()
                 .path("/api/media/download/")
@@ -95,7 +116,16 @@ public class FileService {
             if (!filePath.startsWith(this.fileStorageLocation)) {
                 return "application/octet-stream";
             }
-            return Files.probeContentType(filePath);
+            String detected = Files.probeContentType(filePath);
+            if (detected != null && !detected.isBlank()) {
+                return detected;
+            }
+            int dotIdx = fileName != null ? fileName.lastIndexOf('.') : -1;
+            if (dotIdx >= 0) {
+                String ext = fileName.substring(dotIdx).toLowerCase();
+                return EXTENSION_CONTENT_TYPES.getOrDefault(ext, "application/octet-stream");
+            }
+            return "application/octet-stream";
         } catch (IOException e) {
             return "application/octet-stream";
         }
