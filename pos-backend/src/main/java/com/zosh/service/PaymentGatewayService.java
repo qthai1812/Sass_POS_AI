@@ -46,6 +46,9 @@ public class PaymentGatewayService {
     @Value("${app.backend-url:}")
     private String publicBackendUrl;
 
+    @Value("${sepay.api-key:}")
+    private String sepayApiKey;
+
     private static final int MAX_CACHED_SESSIONS = 2000;
     private static final long SESSION_TTL_HOURS = 2L;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -121,6 +124,25 @@ public class PaymentGatewayService {
         private String expiry; // MM/YY
         private String cvv;
         private String cardHolder;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class SepayWebhookPayload {
+        private Long id;                  // ID giao dịch trên SePay (VD: 92704)
+        private String gateway;           // Cổng/Ngân hàng (MBBank, Vietcombank, MoMo...)
+        private String transactionDate;   // Thời gian giao dịch (VD: 2026-11-04 10:25:00)
+        private String accountNumber;     // Số tài khoản nhận tiền
+        private String code;              // Mã thanh toán do SePay tự nhận diện từ nội dung
+        private String content;           // Toàn bộ nội dung chuyển khoản
+        private String transferType;      // Loại giao dịch: "in" (tiền vào) hoặc "out" (tiền ra)
+        private Double transferAmount;    // Số tiền chuyển vào
+        private Double accumulated;       // Số dư lũy kế sau giao dịch
+        private String subAccount;
+        private String referenceCode;     // Mã tham chiếu ngân hàng
+        private String description;
     }
 
     private String generateWebhookToken() {
@@ -418,6 +440,73 @@ public class PaymentGatewayService {
         }
 
         return sanitizePublicView(session);
+    }
+
+    public synchronized PaymentSessionDTO processSepayWebhook(
+            String authorizationHeader,
+            SepayWebhookPayload payload
+    ) {
+        if (payload == null) {
+            return null;
+        }
+
+        // 1. Kiểm tra xác thực API Key từ SePay nếu có cấu hình
+        if (sepayApiKey != null && !sepayApiKey.isBlank() && !sepayApiKey.equalsIgnoreCase("your_sepay_api_key_secret_here")) {
+            String token = authorizationHeader != null
+                    ? authorizationHeader.replaceFirst("(?i)^apikey\\s+", "").trim()
+                    : "";
+            if (!sepayApiKey.equals(token)) {
+                throw new AccessDeniedException("Sai SePay API Key (Unauthorized webhook).");
+            }
+        }
+
+        // 2. Chỉ xử lý các giao dịch nhận tiền (transferType = "in")
+        if (payload.getTransferType() != null && !"in".equalsIgnoreCase(payload.getTransferType().trim())) {
+            return null;
+        }
+
+        String transferContent = payload.getContent() != null ? payload.getContent().toUpperCase() : "";
+        String sepayCode = payload.getCode() != null ? payload.getCode().toUpperCase() : "";
+        String sepayDesc = payload.getDescription() != null ? payload.getDescription().toUpperCase() : "";
+        Double transferAmount = payload.getTransferAmount() != null ? payload.getTransferAmount() : 0.0;
+
+        // 3. Tìm phiên thanh toán (Session) khớp với mã đối soát (referenceCode) trong nội dung chuyển tiền
+        PaymentSessionDTO matchedSession = sessions.values().stream()
+                .filter(s -> s != null && "PENDING".equalsIgnoreCase(s.getStatus()))
+                .filter(s -> {
+                    String ref = s.getReferenceCode() != null ? s.getReferenceCode().trim().toUpperCase() : "";
+                    if (ref.isBlank()) return false;
+                    return (!sepayCode.isBlank() && sepayCode.contains(ref))
+                            || transferContent.contains(ref)
+                            || sepayDesc.contains(ref);
+                })
+                .findFirst()
+                .orElse(null);
+
+        if (matchedSession == null) {
+            return null;
+        }
+
+        // 4. Kiểm tra số tiền chuyển có đủ với tổng tiền đơn hàng không
+        if (transferAmount + 1.0 < matchedSession.getAmount()) {
+            matchedSession.setProviderMessage("SePay: Khách chuyển thiếu tiền ("
+                    + String.format("%,.0f", transferAmount) + "₫ / "
+                    + String.format("%,.0f", matchedSession.getAmount()) + "₫)");
+            return sanitizePublicView(matchedSession);
+        }
+
+        // 5. Cập nhật trạng thái thành công cho phiên thanh toán
+        String txId = "SEPAY-" + (payload.getId() != null ? payload.getId()
+                : (payload.getReferenceCode() != null ? payload.getReferenceCode() : System.currentTimeMillis()));
+        matchedSession.setStatus("SUCCESS");
+        matchedSession.setTransactionId(txId);
+        matchedSession.setPaidAt(LocalDateTime.now());
+        matchedSession.setUpdatedAt(LocalDateTime.now());
+        String gw = payload.getGateway() != null ? payload.getGateway() : "Ngân hàng/MoMo";
+        matchedSession.setProviderMessage("SePay xác nhận: Đã nhận đủ "
+                + String.format("%,.0f", transferAmount) + "₫ qua " + gw + " (Mã GD: " + txId + ")");
+
+        return sanitizePublicView(matchedSession);
     }
 
     public synchronized PaymentSessionDTO authorizeCard(String sessionId, CardAuthorizeRequest req) {

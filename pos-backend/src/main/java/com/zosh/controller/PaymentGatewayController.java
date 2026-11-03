@@ -5,6 +5,7 @@ import com.zosh.service.PaymentGatewayService;
 import com.zosh.service.PaymentGatewayService.CardAuthorizeRequest;
 import com.zosh.service.PaymentGatewayService.CreateSessionRequest;
 import com.zosh.service.PaymentGatewayService.PaymentSessionDTO;
+import com.zosh.service.PaymentGatewayService.SepayWebhookPayload;
 import com.zosh.service.PaymentGatewayService.WebhookRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -15,6 +16,7 @@ import org.springframework.web.util.HtmlUtils;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/payment-gateway")
@@ -61,6 +63,27 @@ public class PaymentGatewayController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(updated);
+    }
+
+    @PostMapping("/webhook/sepay")
+    public ResponseEntity<?> receiveSepayWebhook(
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestBody SepayWebhookPayload payload
+    ) {
+        PaymentSessionDTO session = paymentGatewayService.processSepayWebhook(authorizationHeader, payload);
+        if (session != null) {
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Xác nhận giao dịch thành công",
+                    "sessionId", session.getSessionId(),
+                    "status", session.getStatus()
+            ));
+        }
+        // Luôn trả về 200 cho SePay để tránh SePay retry lại nhiều lần khi giao dịch không liên quan
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Đã nhận webhook, không có phiên thanh toán nào khớp hoặc giao dịch không phải tiền vào"
+        ));
     }
 
     @PostMapping("/sessions/{sessionId}/authorize-card")
