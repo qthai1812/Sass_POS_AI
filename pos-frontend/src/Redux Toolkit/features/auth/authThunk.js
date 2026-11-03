@@ -87,7 +87,7 @@ export const login = createAsyncThunk(
   },
 );
 
-// ✅ Forgot Password
+// Forgot Password (Bước 1 -> Bước 3)
 export const forgotPassword = createAsyncThunk(
   "auth/forgotPassword",
   async (email, { rejectWithValue }) => {
@@ -97,23 +97,47 @@ export const forgotPassword = createAsyncThunk(
     } catch (err) {
       console.error("Forgot password error:", err);
       return rejectWithValue(
-        err.response?.data?.message || "Failed to send reset email",
+        err.response?.data?.message ||
+          "Không thể gửi mã OTP đến email. Vui lòng kiểm tra kết nối hoặc thử lại sau.",
       );
     }
   },
 );
 
-// ✅ Reset Password
+// Verify OTP (Bước 4)
+export const verifyResetOtp = createAsyncThunk(
+  "auth/verifyResetOtp",
+  async ({ email, otp }, { rejectWithValue }) => {
+    try {
+      const res = await api.post("/auth/verify-reset-otp", { email, otp });
+      return res.data; // { message, resetTicket, expiresInSeconds }
+    } catch (err) {
+      console.error("Verify OTP error:", err);
+      return rejectWithValue(
+        err.response?.data?.message || "Mã OTP không hợp lệ hoặc đã hết hạn.",
+      );
+    }
+  },
+);
+
+// Reset Password (Bước 5)
 export const resetPassword = createAsyncThunk(
   "auth/resetPassword",
-  async ({ token, password }, { rejectWithValue }) => {
+  async ({ resetTicket, token, password, confirmPassword }, { rejectWithValue }) => {
     try {
-      const res = await api.post("/auth/reset-password", { token, password });
+      const res = await api.post("/auth/reset-password", {
+        resetTicket: resetTicket || token,
+        password,
+        confirmPassword,
+      });
+      // Xóa toàn bộ JWT cũ trên trình duyệt hiện tại sau khi đặt lại mật khẩu thành công
+      localStorage.removeItem("jwt");
+      localStorage.removeItem("token");
       return res.data;
     } catch (err) {
       console.error("Reset password error:", err);
       return rejectWithValue(
-        err.response?.data?.message || "Failed to reset password",
+        err.response?.data?.message || "Không thể cập nhật mật khẩu mới.",
       );
     }
   },

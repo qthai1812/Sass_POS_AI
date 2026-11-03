@@ -1,307 +1,174 @@
-import React, { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { useToast } from '@/components/ui/use-toast'
-import { 
-  Eye, 
-  EyeOff, 
-  Lock, 
-  ShoppingCart, 
-  CheckCircle,
-  AlertCircle
-} from 'lucide-react'
-import { Link, useNavigate, useSearchParams } from 'react-router'
-import { useDispatch, useSelector } from 'react-redux'
-import { resetPassword } from '@/Redux Toolkit/features/auth/authThunk'
-import { ThemeToggle } from '../../../components/theme-toggle'
-import { clearResetPasswordState } from '../../../Redux Toolkit/features/auth/authSlice'
+import React, { useState, useEffect } from "react";
+import { useSearchParams, useNavigate, Link } from "react-router";
+import { useDispatch, useSelector } from "react-redux";
+import { resetPassword } from "../../../Redux Toolkit/features/auth/authThunk";
+import { clearResetPasswordState } from "../../../Redux Toolkit/features/auth/authSlice";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { KeyRound, Eye, EyeOff, AlertTriangle, CheckCircle2 } from "lucide-react";
 
-const ResetPassword = () => {
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [searchParams] = useSearchParams()
-  const [isSuccess, setIsSuccess] = useState(false)
-  
-  const [formData, setFormData] = useState({
-    password: '',
-    confirmPassword: ''
-  })
+export default function ResetPassword() {
+  const [searchParams] = useSearchParams();
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
 
-  const [errors, setErrors] = useState({})
+  // Hỗ trợ nhận cả param "resetTicket" hoặc "token" (tương thích ngược) từ URL hoặc Redux state
+  const tokenFromUrl = searchParams.get("resetTicket") || searchParams.get("token") || "";
 
-  const dispatch = useDispatch()
-  const navigate = useNavigate()
-  const { toast } = useToast()
-  const { resetPasswordLoading, resetPasswordSuccess, resetPasswordError } = useSelector((state) => state.auth)
+  const {
+    resetPasswordLoading,
+    resetPasswordError,
+    resetPasswordSuccess,
+    resetPasswordMessage,
+    resetTicket: stateResetTicket,
+  } = useSelector((state) => state.auth);
 
-  const token = searchParams.get('token')
+  const activeTicket = tokenFromUrl || stateResetTicket;
+
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [localError, setLocalError] = useState(null);
 
   useEffect(() => {
-    if (!token) {
-      toast({
-        title: "Invalid Link",
-        description: "No reset token found in the URL",
-        variant: "destructive",
-      })
-      navigate('/auth/login')
-    }
-  }, [token, navigate, toast])
-
-  useEffect(() => {
-    if (resetPasswordSuccess) {
-      setIsSuccess(true)
-      toast({
-        title: "Success",
-        description: "Password reset successful! You can now login with your new password.",
-      })
-    }
-  }, [resetPasswordSuccess, toast])
-
-  useEffect(() => {
-    if (resetPasswordError) {
-      toast({
-        title: "Error",
-        description: resetPasswordError,
-        variant: "destructive",
-      })
-    }
-  }, [resetPasswordError, toast])
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
-    
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }))
-    }
-  }
-
-  const validateForm = () => {
-    const newErrors = {}
-
-    if (!formData.password) {
-      newErrors.password = 'Password is required'
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters'
-    }
-
-    if (!formData.confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password'
-    } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match'
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
+    return () => {
+      dispatch(clearResetPasswordState());
+    };
+  }, [dispatch]);
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    
-    if (!validateForm()) {
-      return
+    e.preventDefault();
+    setLocalError(null);
+
+    if (!activeTicket) {
+      setLocalError("Phiên đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng thử lại từ bước quên mật khẩu.");
+      return;
     }
 
-    if (!token) {
-      toast({
-        title: "Error",
-        description: "Invalid reset token",
-        variant: "destructive",
+    if (!password || password.length < 6) {
+      setLocalError("Mật khẩu mới phải có ít nhất 6 ký tự.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setLocalError("Mật khẩu xác nhận không khớp với mật khẩu mới.");
+      return;
+    }
+
+    // Gửi request đặt lại mật khẩu kèm resetTicket lên backend
+    const res = await dispatch(
+      resetPassword({
+        resetTicket: activeTicket,
+        password,
+        confirmPassword,
       })
-      return
+    );
+
+    if (res.meta.requestStatus === "fulfilled") {
+      setTimeout(() => {
+        navigate("/auth/login");
+      }, 2500);
     }
-
-    try {
-      await dispatch(resetPassword({ token, password: formData.password }))
-    } catch (error) {
-      console.error('Reset password error:', error)
-    }
-  }
-
-  const handleBackToLogin = () => {
-    dispatch(clearResetPasswordState())
-    navigate('/auth/login')
-  }
-
-  if (!token) {
-    return null // Will redirect in useEffect
-  }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 flex items-center justify-center p-4 relative">
-      {/* Theme Toggle */}
-      <div className="absolute top-4 right-4">
-        <ThemeToggle />
-      </div>
-      
-      <div className="w-full max-w-md">
-        {/* Logo and Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center space-x-2 mb-4">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-              <ShoppingCart className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <span className="text-2xl font-bold text-foreground">POS Pro</span>
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">
-            {isSuccess ? 'Password Reset Complete' : 'Reset Your Password'}
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            {isSuccess 
-              ? 'Your password has been successfully reset'
-              : 'Enter your new password below'
-            }
+    <div className="flex items-center justify-center min-h-screen bg-background p-4">
+      <Card className="w-full max-w-md shadow-lg border-border">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-bold text-center">
+            Đặt lại mật khẩu
+          </CardTitle>
+          <p className="text-xs text-center text-muted-foreground">
+            Nhập mật khẩu mới cho tài khoản POS Pro của bạn
           </p>
-        </div>
-
-        {/* Success State */}
-        {isSuccess ? (
-          <div className="bg-card rounded-2xl shadow-xl p-8 text-center">
-            <div className="w-16 h-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="w-8 h-8 text-green-600" />
+        </CardHeader>
+        <CardContent>
+          {resetPasswordSuccess ? (
+            <div className="space-y-4 text-center py-4">
+              <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
+              <p className="text-sm font-medium text-emerald-600">
+                {resetPasswordMessage ||
+                  "Đổi mật khẩu thành công! Toàn bộ phiên đăng nhập cũ đã được vô hiệu hóa. Đang chuyển hướng về trang đăng nhập..."}
+              </p>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => navigate("/auth/login")}
+              >
+                Đến trang Đăng nhập
+              </Button>
             </div>
-            <h3 className="text-xl font-semibold text-foreground mb-2">
-              Password Reset Complete
-            </h3>
-            <p className="text-muted-foreground mb-6">
-              Your password has been successfully updated. You can now login with your new password.
-            </p>
-            <Button
-              onClick={handleBackToLogin}
-              className="w-full"
-            >
-              Back to Login
-            </Button>
-          </div>
-        ) : (
-          /* Reset Password Form */
-          <div className="bg-card rounded-2xl shadow-xl p-8">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* New Password Field */}
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-foreground mb-2">
-                  New Password
-                </label>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {!activeTicket && (
+                <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    Không tìm thấy mã xác thực phiên (Reset Ticket). Vui lòng thực hiện lại quy trình Quên mật khẩu.
+                  </span>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Mật khẩu mới</label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
-                    <Lock className="h-5 w-5 text-muted-foreground" />
-                  </div>
+                  <KeyRound className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
                   <Input
                     type={showPassword ? "text" : "password"}
-                    id="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    className={`pl-10 pr-12 ${errors.password ? 'border-red-500' : ''}`}
-                    placeholder="Enter new password"
+                    placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
+                    className="pl-9 pr-9"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     required
+                    disabled={!activeTicket}
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center z-10"
                     onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
                   >
-                    {showPassword ? (
-                      <EyeOff className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-                    ) : (
-                      <Eye className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-                    )}
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                {errors.password && (
-                  <div className="flex items-center mt-1 text-sm text-red-600">
-                    <AlertCircle className="w-4 h-4 mr-1" />
-                    {errors.password}
-                  </div>
-                )}
               </div>
 
-              {/* Confirm Password Field */}
-              <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-foreground mb-2">
-                  Confirm New Password
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
-                    <Lock className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <Input
-                    type={showConfirmPassword ? "text" : "password"}
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    value={formData.confirmPassword}
-                    onChange={handleInputChange}
-                    className={`pl-10 pr-12 ${errors.confirmPassword ? 'border-red-500' : ''}`}
-                    placeholder="Confirm new password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center z-10"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-                    ) : (
-                      <Eye className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-                    )}
-                  </button>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Xác nhận mật khẩu mới</label>
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Nhập lại mật khẩu mới"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  disabled={!activeTicket}
+                />
+              </div>
+
+              {(localError || resetPasswordError) && (
+                <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{localError || resetPasswordError}</span>
                 </div>
-                {errors.confirmPassword && (
-                  <div className="flex items-center mt-1 text-sm text-red-600">
-                    <AlertCircle className="w-4 h-4 mr-1" />
-                    {errors.confirmPassword}
-                  </div>
-                )}
-              </div>
+              )}
 
-              {/* Password Requirements */}
-              <div className="text-sm text-muted-foreground">
-                <p className="mb-1">Password requirements:</p>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>At least 6 characters long</li>
-                  <li>Use a combination of letters and numbers</li>
-                </ul>
-              </div>
-
-              {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full py-3 text-lg font-medium"
-                disabled={resetPasswordLoading}
+                className="w-full"
+                disabled={resetPasswordLoading || !activeTicket}
               >
-                {resetPasswordLoading ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Resetting Password...
-                  </div>
-                ) : (
-                  'Reset Password'
-                )}
+                {resetPasswordLoading ? "Đang cập nhật mật khẩu..." : "Xác nhận đổi mật khẩu"}
               </Button>
+
+              <div className="text-center text-sm pt-2">
+                <Link to="/auth/login" className="text-primary hover:underline">
+                  Quay lại Đăng nhập
+                </Link>
+              </div>
             </form>
-
-            {/* Back to Login Link */}
-            <div className="mt-6 text-center">
-              <Link 
-                to="/auth/login" 
-                className="text-sm text-primary hover:text-primary/80 transition-colors"
-              >
-                ← Back to Login
-              </Link>
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
-  )
+  );
 }
-
-export default ResetPassword

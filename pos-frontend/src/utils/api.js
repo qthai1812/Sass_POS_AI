@@ -4,6 +4,7 @@ const PUBLIC_AUTH_PATHS = [
   '/auth/login',
   '/auth/signup',
   '/auth/forgot-password',
+  '/auth/verify-reset-otp',
   '/auth/reset-password',
 ];
 

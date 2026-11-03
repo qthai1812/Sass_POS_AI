@@ -56,6 +56,18 @@ public class User {
     private LocalDateTime updatedAt;
     private LocalDateTime lastLogin;
 
+    // Thời điểm mật khẩu được thay đổi gần nhất (dùng để hủy hiệu lực các JWT cấp trước thời điểm này & kiểm tra cooldown 5 phút)
+    @Column(name = "password_changed_at")
+    private LocalDateTime passwordChangedAt;
+
+    // Số lần đã đổi mật khẩu trong ngày (tối đa 3 lần/ngày)
+    @Column(name = "daily_password_change_count")
+    private Integer dailyPasswordChangeCount = 0;
+
+    // Ngày ghi nhận bộ đếm đổi mật khẩu
+    @Column(name = "password_change_count_date")
+    private java.time.LocalDate passwordChangeCountDate;
+
     @PrePersist
     protected void onCreate() {
         if (this.createdAt == null) {
