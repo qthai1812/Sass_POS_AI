@@ -64,6 +64,22 @@ public class JwtProvider {
         }
     }
 
+    public java.util.Date getIssuedAtFromToken(String jwt) {
+        if (jwt != null && jwt.startsWith("Bearer ")) {
+            jwt = jwt.substring(7);
+        }
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(JwtConstant.getSecretKey())
+                    .build()
+                    .parseSignedClaims(jwt)
+                    .getPayload();
+            return claims.getIssuedAt();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private String populateAuthorities(Collection<? extends GrantedAuthority> authorities) {
         Set<String> auths = new HashSet<>();
         for (GrantedAuthority authority : authorities) {

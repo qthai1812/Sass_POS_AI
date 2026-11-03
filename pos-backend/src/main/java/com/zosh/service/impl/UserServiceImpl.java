@@ -18,7 +18,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -41,6 +46,16 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findByEmail(email);
         if (user == null) {
             throw new UserException("Invalid token");
+        }
+        Date issuedAt = jwtProvider.getIssuedAtFromToken(token);
+        if (user.getPasswordChangedAt() != null && issuedAt != null) {
+            LocalDateTime tokenIssuedTime = LocalDateTime.ofInstant(
+                    issuedAt.toInstant(), ZoneId.systemDefault()
+            );
+            // Cho phép độ lệch 1 giây; nếu token cấp trước khi đổi mật khẩu -> từ chối ngay
+            if (tokenIssuedTime.isBefore(user.getPasswordChangedAt().minusSeconds(1))) {
+                throw new UserException("Phiên đăng nhập đã hết hiệu lực do mật khẩu vừa được thay đổi. Vui lòng đăng nhập lại.");
+            }
         }
         if (Boolean.FALSE.equals(user.getLoginAccess())) {
             throw new UserException("Login access for this account has been disabled by your manager.");
@@ -228,7 +243,41 @@ public class UserServiceImpl implements UserService {
         if (newPassword == null || newPassword.length() < 6) {
             throw new UserException("New password must be at least 6 characters");
         }
+        if (passwordEncoder.matches(newPassword, currentUser.getPassword())) {
+            throw new UserException("Mật khẩu mới không được trùng với mật khẩu đang sử dụng.");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDate today = LocalDate.now();
+
+        // 1. Kiểm tra khoảng cách 5 phút giữa 2 lần đổi mật khẩu
+        if (currentUser.getPasswordChangedAt() != null) {
+            long secondsSinceLastChange = Duration.between(currentUser.getPasswordChangedAt(), now).getSeconds();
+            long requiredSeconds = 5 * 60L;
+            if (secondsSinceLastChange < requiredSeconds) {
+                long remainingSeconds = requiredSeconds - secondsSinceLastChange;
+                long mins = remainingSeconds / 60;
+                long secs = remainingSeconds % 60;
+                throw new UserException(String.format(
+                        "Bạn vừa đổi mật khẩu gần đây. Vui lòng đợi %d phút %d giây nữa mới được đổi mật khẩu tiếp (tối thiểu 5 phút/lần).",
+                        mins, secs
+                ));
+            }
+        }
+
+        // 2. Kiểm tra tối đa 3 lần đổi mật khẩu trong 1 ngày
+        int countToday = 0;
+        if (today.equals(currentUser.getPasswordChangeCountDate()) && currentUser.getDailyPasswordChangeCount() != null) {
+            countToday = currentUser.getDailyPasswordChangeCount();
+        }
+        if (countToday >= 3) {
+            throw new UserException("Bạn đã đạt giới hạn đổi mật khẩu tối đa 3 lần trong ngày hôm nay. Vui lòng thử lại vào ngày mai.");
+        }
+
         currentUser.setPassword(passwordEncoder.encode(newPassword));
+        currentUser.setDailyPasswordChangeCount(countToday + 1);
+        currentUser.setPasswordChangeCountDate(today);
+        currentUser.setPasswordChangedAt(now);
         userRepository.save(currentUser);
     }
 }
