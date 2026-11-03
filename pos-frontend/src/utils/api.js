@@ -17,7 +17,6 @@ const api = axios.create({
   },
 });
 
-// ✅ Auto-attach JWT token to protected requests
 api.interceptors.request.use(
   (config) => {
     if (!isPublicAuthRequest(config.url)) {
@@ -26,12 +25,15 @@ api.interceptors.request.use(
         config.headers['Authorization'] = `Bearer ${token}`;
       }
     }
+    // Bắt buộc xóa Content-Type mặc định khi gửi FormData để trình duyệt tự gắn boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// ✅ Global response error handler — logout on expired/invalid session 401
 api.interceptors.response.use(
   (response) => response,
   (error) => {
