@@ -52,7 +52,9 @@ const ReceiptDialog = ({ showReceiptDialog, setShowReceiptDialog }) => {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>Order Total:</span>
-                <span className="font-semibold">đ{total.toFixed(2)}</span>
+                <span className="font-semibold">
+                  ₫{Math.round(Number(total || 0)).toLocaleString("vi-VN")}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Payment Method:</span>

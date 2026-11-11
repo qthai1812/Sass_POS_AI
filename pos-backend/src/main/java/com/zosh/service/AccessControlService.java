@@ -39,28 +39,22 @@ public class AccessControlService {
         return storeRepository.findByStoreAdminId(user.getId());
     }
 
-    /** User là chủ cửa hàng hoặc STORE_ADMIN / STORE_MANAGER thuộc cửa hàng đó. */
+    /** User là chủ cửa hàng (ROLE_STORE_OWNER) thuộc cửa hàng đó. */
     public boolean isStoreLevelUser(User user, Store store) {
         if (user == null || store == null) {
             return false;
         }
-        if (user.getRole() == UserRole.ROLE_ADMIN) {
-            return true;
-        }
         boolean isOwner = store.getStoreAdmin() != null && store.getStoreAdmin().getId().equals(user.getId());
-        boolean isStoreStaff = user.getStore() != null
+        boolean isStoreOwnerRole = user.getStore() != null
                 && user.getStore().getId().equals(store.getId())
-                && (user.getRole() == UserRole.ROLE_STORE_ADMIN || user.getRole() == UserRole.ROLE_STORE_MANAGER);
-        return isOwner || isStoreStaff;
+                && user.getRole() == UserRole.ROLE_STORE_OWNER;
+        return isOwner || isStoreOwnerRole;
     }
 
     /** Quyền đọc cấp Store (bao gồm cả Branch Manager và Cashier thuộc chi nhánh của Store đó). */
     public boolean canAccessStore(User user, Store store) {
         if (user == null || store == null) {
             return false;
-        }
-        if (user.getRole() == UserRole.ROLE_ADMIN) {
-            return true;
         }
         if (isStoreLevelUser(user, store)) {
             return true;
@@ -79,15 +73,9 @@ public class AccessControlService {
         }
     }
 
-    /** Quyền quản lý (sửa/xóa/hủy): Admin, cấp cửa hàng, hoặc BRANCH_MANAGER của chính chi nhánh đó. */
+    /** Quyền quản lý (sửa/xóa/hủy): Chủ cửa hàng, hoặc BRANCH_MANAGER của chính chi nhánh đó. */
     public boolean canManageBranch(User user, Branch branch) {
-        if (user == null) {
-            return false;
-        }
-        if (user.getRole() == UserRole.ROLE_ADMIN) {
-            return true;
-        }
-        if (branch == null) {
+        if (user == null || branch == null) {
             return false;
         }
         if (isStoreLevelUser(user, branch.getStore())) {
@@ -121,13 +109,10 @@ public class AccessControlService {
         }
     }
 
-    /** Chỉ cho phép Super Admin, Chủ cửa hàng hoặc Quản lý cấp chuỗi (chặn Branch Manager xóa dữ liệu kiểm toán). */
+    /** Chỉ cho phép Chủ cửa hàng (Store Owner) thuộc cửa hàng đó. */
     public void assertStoreLevelOrAdmin(User user, Store store) {
-        if (user != null && user.getRole() == UserRole.ROLE_ADMIN) {
-            return;
-        }
         if (!isStoreLevelUser(user, store)) {
-            throw new AccessDeniedException("Chỉ Chủ cửa hàng (Store Admin) hoặc Quản lý chuỗi (Store Manager) mới có quyền xóa vĩnh viễn dữ liệu này.");
+            throw new AccessDeniedException("Chỉ Chủ cửa hàng (Store Owner) mới có quyền thực hiện thao tác cấp chuỗi này.");
         }
     }
 }

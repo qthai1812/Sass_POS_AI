@@ -19,7 +19,8 @@ import java.util.List;
         indexes = {
                 @Index(name = "idx_orders_branch_created", columnList = "branch_id, createdAt"),
                 @Index(name = "idx_orders_cashier_created", columnList = "cashier_id, createdAt"),
-                @Index(name = "idx_orders_customer", columnList = "customer_id")
+                @Index(name = "idx_orders_customer", columnList = "customer_id"),
+                @Index(name = "idx_orders_payment_session", columnList = "paymentSessionId")
         }
 )
 public class Order {
@@ -42,6 +43,8 @@ public class Order {
 
     private LocalDateTime createdAt;
 
+    private LocalDateTime paidAt;
+
     @ManyToOne
     private Branch branch;
 
@@ -53,11 +56,16 @@ public class Order {
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
     private List<OrderItem> items;
+
     @Enumerated(EnumType.STRING)
     private PaymentType paymentType;
 
     @Enumerated(EnumType.STRING)
     private OrderStatus status;
+
+    private String paymentSessionId;
+
+    private String paymentTransactionId;
 
     @PrePersist
     protected void onCreate() {
@@ -66,6 +74,9 @@ public class Order {
         }
         if (this.status == null) {
             this.status = OrderStatus.COMPLETED;
+        }
+        if (this.status == OrderStatus.COMPLETED && this.paidAt == null) {
+            this.paidAt = this.createdAt;
         }
     }
 }

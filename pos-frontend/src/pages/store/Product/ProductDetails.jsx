@@ -87,15 +87,15 @@ const ProductDetails = ({ product }) => {
                 <div className="text-sm text-gray-500">Price</div>
                 <div className="font-medium">
                   <span className="text-lg font-bold text-emerald-700">
-                    đ
-                    {product.sellingPrice?.toFixed(2) ||
-                      product.price?.toFixed(2) ||
-                      "0.00"}
+                    ₫
+                    {Math.round(
+                      Number(product.sellingPrice ?? product.price ?? 0),
+                    ).toLocaleString("vi-VN")}
                   </span>
                   {product.mrp &&
                     product.mrp > (product.sellingPrice || product.price) && (
                       <span className="ml-2 text-sm line-through text-gray-500">
-                        đ{product.mrp.toFixed(2)}
+                        ₫{Math.round(Number(product.mrp)).toLocaleString("vi-VN")}
                       </span>
                     )}
                 </div>

@@ -11,6 +11,7 @@ public interface OrderService {
     OrderDTO createOrder(OrderDTO orderDTO) throws Exception;
     OrderDTO getOrderById(Long id) throws Exception;
     OrderDTO updateOrderStatus(Long id, OrderStatus status) throws Exception;
+    OrderDTO updateOrderStatus(Long id, OrderStatus status, PaymentType paymentType, String paymentSessionId) throws Exception;
     List<OrderDTO> getOrdersByBranch(Long branchId,
                                      Long customerId,
                                      Long cashierId,
@@ -21,4 +22,5 @@ public interface OrderService {
     List<OrderDTO> getTodayOrdersByBranch(Long branchId) throws Exception;
     List<OrderDTO> getOrdersByCustomerId(Long customerId) throws Exception;
     List<OrderDTO> getTop5RecentOrdersByBranchId(Long branchId) throws Exception;
+    int cancelExpiredPendingOrders();
 }

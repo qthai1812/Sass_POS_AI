@@ -270,11 +270,14 @@ export const getRecentOrdersByBranch = createAsyncThunk(
 // Update Order Status (PENDING -> COMPLETED / CANCELLED)
 export const updateOrderStatus = createAsyncThunk(
   'order/updateStatus',
-  async ({ id, status }, { rejectWithValue }) => {
+  async ({ id, status, paymentType, paymentSessionId }, { rejectWithValue }) => {
     try {
       const headers = getAuthHeaders();
+      const params = [`status=${encodeURIComponent(status)}`];
+      if (paymentType) params.push(`paymentType=${encodeURIComponent(paymentType)}`);
+      if (paymentSessionId) params.push(`paymentSessionId=${encodeURIComponent(paymentSessionId)}`);
       const res = await api.put(
-        `/api/orders/${id}/status?status=${encodeURIComponent(status)}`,
+        `/api/orders/${id}/status?${params.join('&')}`,
         {},
         { headers }
       );

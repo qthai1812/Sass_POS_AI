@@ -1,9 +1,12 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
   SelectTrigger,
@@ -11,15 +14,28 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { Minus, Plus } from "lucide-react";
+import { AlertCircle, Minus, Plus } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useSelector, useDispatch } from "react-redux";
 import {
   createRefund,
   getRefundsByBranch,
+  getRefundsByOrder,
 } from "../../../../Redux Toolkit/features/refund/refundThunks";
-import { getOrdersByBranch } from "../../../../Redux Toolkit/features/order/orderThunks";
+import {
+  getOrderById,
+  getOrdersByBranch,
+} from "../../../../Redux Toolkit/features/order/orderThunks";
 import { getInventoryByBranch } from "../../../../Redux Toolkit/features/inventory/inventoryThunks";
+import { getCurrentShiftProgress } from "../../../../Redux Toolkit/features/shiftReport/shiftReportThunks";
+import {
+  buildReturnableItems,
+  calculateItemizedRefundSummary,
+  clampReturnQuantities,
+  mergeOrderRefunds,
+  normalizeRefundError,
+  validateRefundSubmission,
+} from "../returnUtils";
 
 const returnReasons = [
   "Damaged product",
@@ -32,20 +48,40 @@ const returnReasons = [
 
 const ReturnItemsSection = ({
   selectedOrder,
+  resolvedBranchId,
   setShowReceiptDialog,
   onRefundSuccess,
+  isCashier = false,
+  hasActiveShift = true,
 }) => {
   const { toast } = useToast();
   const { userProfile } = useSelector((state) => state.user);
   const { branch } = useSelector((state) => state.branch);
-  const { refundsByBranch = [] } = useSelector((state) => state.refund);
+  const { refundsByBranch = [], refundsByOrder = [] } = useSelector(
+    (state) => state.refund,
+  );
   const dispatch = useDispatch();
 
+  const [refundMode, setRefundMode] = useState("ITEMS");
   const [returnReason, setReturnReason] = useState("");
   const [otherReason, setOtherReason] = useState("");
   const [refundMethod, setRefundMethod] = useState("original");
   const [returnQuantities, setReturnQuantities] = useState({});
+  const [adjustItemizedAmount, setAdjustItemizedAmount] = useState(false);
+  const [manualItemizedAmount, setManualItemizedAmount] = useState("");
+  const [amountOnlyInput, setAmountOnlyInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [validationError, setValidationError] = useState(null);
+
+  const returnReasonTriggerRef = useRef(null);
+  const otherReasonRef = useRef(null);
+
+  const effectiveBranchId =
+    resolvedBranchId ||
+    branch?.id ||
+    userProfile?.branchId ||
+    userProfile?.branch?.id ||
+    selectedOrder?.branchId;
 
   const {
     alreadyRefunded,
@@ -53,85 +89,57 @@ const ReturnItemsSection = ({
     netOrderFactor,
     returnableItems,
   } = useMemo(() => {
-    const orderItems = selectedOrder?.items || [];
-    const orderTotal = Number(selectedOrder?.totalAmount || 0);
-    const rawSubTotal = Number(selectedOrder?.subTotal || 0);
-    const effectiveSubTotal = rawSubTotal > 0 ? rawSubTotal : orderTotal;
-    const factor =
-      effectiveSubTotal > 0 ? orderTotal / effectiveSubTotal : 1.0;
-
-    const orderRefunds = (refundsByBranch || []).filter(
-      (r) => r?.orderId === selectedOrder?.id,
+    const orderRefunds = mergeOrderRefunds(
+      selectedOrder?.id,
+      refundsByOrder,
+      refundsByBranch,
     );
-    let refundedSum = 0;
-    const returnedByItem = new Map();
-    const returnedByProduct = new Map();
+    return buildReturnableItems(selectedOrder, orderRefunds);
+  }, [selectedOrder, refundsByOrder, refundsByBranch]);
 
-    for (const r of orderRefunds) {
-      refundedSum += Number(r?.amount || 0);
-      for (const ri of r?.items || []) {
-        const q = Number(ri?.quantity || 0);
-        if (q <= 0) continue;
-        if (ri.orderItemId != null) {
-          returnedByItem.set(
-            ri.orderItemId,
-            (returnedByItem.get(ri.orderItemId) || 0) + q,
-          );
-        } else if (ri.productId != null) {
-          returnedByProduct.set(
-            ri.productId,
-            (returnedByProduct.get(ri.productId) || 0) + q,
-          );
-        }
-      }
-    }
+  const hasAnyReturnableQty = useMemo(
+    () => returnableItems.some((item) => item.remainingQty > 0),
+    [returnableItems],
+  );
 
-    const mappedItems = orderItems.map((oi) => {
-      const orderedQty = Number(oi.quantity || 0);
-      let prevReturned = Number(returnedByItem.get(oi.id) || 0);
-      if (prevReturned === 0 && oi.product?.id != null) {
-        const fb = returnedByProduct.get(oi.product.id) || 0;
-        if (fb > 0) {
-          prevReturned = Math.min(orderedQty, fb);
-          returnedByProduct.set(oi.product.id, fb - prevReturned);
-        }
-      }
-      const remainingQty = Math.max(0, orderedQty - prevReturned);
-      const rawUnitPrice =
-        oi.price != null && orderedQty > 0
-          ? Number(oi.price) / orderedQty
-          : Number(oi.product?.sellingPrice || 0);
-      const netUnitPrice = rawUnitPrice * factor;
-
-      return {
-        orderItemId: oi.id,
-        productId: oi.product?.id || null,
-        productName: oi.product?.name || "Deleted Product",
-        orderedQty,
-        prevReturned,
-        remainingQty,
-        netUnitPrice,
-      };
-    });
-
-    return {
-      alreadyRefunded: refundedSum,
-      remainingRefundable: Math.max(0, orderTotal - refundedSum),
-      netOrderFactor: factor,
-      returnableItems: mappedItems,
-    };
-  }, [selectedOrder, refundsByBranch]);
-
+  // Initialize quantities to 0 for newly opened orders; clamp safely when order refunds arrive asynchronously.
+  const prevOrderIdRef = useRef(selectedOrder?.id);
   useEffect(() => {
-    const initial = {};
-    for (const item of returnableItems) {
-      initial[item.orderItemId] = item.remainingQty;
+    const orderChanged = prevOrderIdRef.current !== selectedOrder?.id;
+    prevOrderIdRef.current = selectedOrder?.id;
+
+    setReturnQuantities((prev) =>
+      clampReturnQuantities(orderChanged ? {} : prev, returnableItems, true),
+    );
+
+    if (orderChanged) {
+      setAdjustItemizedAmount(false);
+      setManualItemizedAmount("");
+      setAmountOnlyInput("");
+      setReturnReason("");
+      setOtherReason("");
+      setRefundMethod("original");
+      setValidationError(null);
+      setRefundMode(
+        returnableItems.some((i) => i.remainingQty > 0) ? "ITEMS" : "AMOUNT",
+      );
     }
-    setReturnQuantities(initial);
   }, [selectedOrder?.id, returnableItems]);
 
+  // If all physical items have already been returned while some balance remains (e.g. prior restocking fee),
+  // default to Partial Amount Only tab.
+  useEffect(() => {
+    if (!hasAnyReturnableQty && remainingRefundable > 0 && refundMode === "ITEMS") {
+      setRefundMode("AMOUNT");
+    }
+  }, [hasAnyReturnableQty, remainingRefundable, refundMode]);
+
   const updateItemQuantity = (orderItemId, maxQty, nextQty) => {
-    const clamped = Math.max(0, Math.min(maxQty, Number(nextQty || 0)));
+    const parsed = Number(nextQty);
+    const clamped = Number.isFinite(parsed)
+      ? Math.max(0, Math.min(maxQty, Math.floor(parsed)))
+      : 0;
+    setValidationError(null);
     setReturnQuantities((prev) => ({
       ...prev,
       [orderItemId]: clamped,
@@ -143,6 +151,7 @@ const ReturnItemsSection = ({
     for (const item of returnableItems) {
       all[item.orderItemId] = item.remainingQty;
     }
+    setValidationError(null);
     setReturnQuantities(all);
   };
 
@@ -151,7 +160,10 @@ const ReturnItemsSection = ({
     for (const item of returnableItems) {
       cleared[item.orderItemId] = 0;
     }
+    setValidationError(null);
     setReturnQuantities(cleared);
+    setAdjustItemizedAmount(false);
+    setManualItemizedAmount("");
   };
 
   const {
@@ -159,85 +171,100 @@ const ReturnItemsSection = ({
     selectedReceiptItems,
     totalSelectedQty,
     returningAllRemaining,
+    itemsRefundValue,
     calculatedRefundAmount,
-  } = useMemo(() => {
-    const payload = [];
-    const receiptItems = [];
-    let selectedCount = 0;
-    let allRemaining = true;
-    let sumNetLines = 0;
+    maxAllowedForItemized,
+  } = useMemo(
+    () =>
+      calculateItemizedRefundSummary(
+        returnableItems,
+        returnQuantities,
+        remainingRefundable,
+      ),
+    [returnableItems, returnQuantities, remainingRefundable],
+  );
 
-    for (const item of returnableItems) {
-      const qty = Math.max(
-        0,
-        Math.min(
-          item.remainingQty,
-          Number(returnQuantities[item.orderItemId] ?? 0),
-        ),
+  // Keep manual itemized input synced to calculated amount unless cashier actively edited it
+  useEffect(() => {
+    if (!adjustItemizedAmount) {
+      setManualItemizedAmount(
+        calculatedRefundAmount > 0 ? String(calculatedRefundAmount) : "",
       );
-      if (qty < item.remainingQty) {
-        allRemaining = false;
-      }
-      if (qty > 0) {
-        selectedCount += qty;
-        const lineAmount = Math.round(item.netUnitPrice * qty * 100) / 100;
-        sumNetLines += lineAmount;
-        payload.push({
-          orderItemId: item.orderItemId,
-          productId: item.productId,
-          quantity: qty,
-        });
-        receiptItems.push({
-          orderItemId: item.orderItemId,
-          productId: item.productId,
-          productName: item.productName,
-          quantity: qty,
-          unitPrice: Math.round(item.netUnitPrice * 100) / 100,
-          refundAmount: lineAmount,
-        });
-      }
     }
+  }, [adjustItemizedAmount, calculatedRefundAmount]);
 
-    const finalAmount =
-      selectedCount === 0
-        ? 0
-        : allRemaining
-          ? remainingRefundable
-          : Math.min(
-              remainingRefundable,
-              Math.round(sumNetLines * 100) / 100,
-            );
+  const effectiveRefundAmount =
+    refundMode === "AMOUNT"
+      ? Number(amountOnlyInput || 0)
+      : adjustItemizedAmount
+        ? Number(manualItemizedAmount || 0)
+        : calculatedRefundAmount;
 
-    return {
-      selectedItemsPayload: payload,
-      selectedReceiptItems: receiptItems,
-      totalSelectedQty: selectedCount,
-      returningAllRemaining: allRemaining && selectedCount > 0,
-      calculatedRefundAmount: finalAmount,
-    };
-  }, [returnableItems, returnQuantities, remainingRefundable]);
+  const maxAllowedForCurrentMode =
+    refundMode === "AMOUNT" ? remainingRefundable : maxAllowedForItemized;
+
+  const itemizedFeeRetained =
+    refundMode === "ITEMS" &&
+    adjustItemizedAmount &&
+    calculatedRefundAmount > 0 &&
+    effectiveRefundAmount >= 0 &&
+    effectiveRefundAmount < calculatedRefundAmount
+      ? Math.round((calculatedRefundAmount - effectiveRefundAmount) * 100) / 100
+      : 0;
 
   const processRefund = async () => {
-    if (totalSelectedQty <= 0) {
-      toast({
-        title: "No Items Selected",
-        description: "Please select at least 1 item quantity to return.",
-        variant: "destructive",
+    const finalReason =
+      returnReason === "Other" ? otherReason.trim() : returnReason;
+
+    const validation = validateRefundSubmission({
+      refundMode,
+      remainingRefundable,
+      totalSelectedQty,
+      refundAmount: effectiveRefundAmount,
+      maxAllowedAmount: maxAllowedForCurrentMode,
+      finalReason,
+      isCashier,
+      hasActiveShift,
+    });
+
+    if (!validation.valid) {
+      const resolvedField =
+        validation.field === "reason"
+          ? returnReason === "Other"
+            ? "otherReason"
+            : "returnReason"
+          : validation.field;
+
+      setValidationError({
+        ...validation,
+        field: resolvedField,
       });
+
+      toast({
+        id: "refund-validation-error",
+        title: validation.title,
+        description: validation.description,
+        variant: "destructive",
+        duration: 3000,
+      });
+
+      if (resolvedField === "otherReason") {
+        otherReasonRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+        otherReasonRef.current?.focus();
+      } else if (resolvedField === "returnReason") {
+        returnReasonTriggerRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+        returnReasonTriggerRef.current?.focus();
+      }
       return;
     }
 
-    const finalReason =
-      returnReason === "Other" ? otherReason.trim() : returnReason;
-    if (!finalReason) {
-      toast({
-        title: "Missing Return Reason",
-        description:
-          "Please select or specify a return reason before processing the refund.",
-        variant: "destructive",
-      });
-      return;
-    }
+    setValidationError(null);
 
     const resolvedMethod = (
       refundMethod === "original"
@@ -245,50 +272,69 @@ const ReturnItemsSection = ({
         : refundMethod
     ).toUpperCase();
 
+    const roundedAmount = Math.round(effectiveRefundAmount * 100) / 100;
     const refundDTO = {
       orderId: selectedOrder.id,
-      branchId: branch?.id,
+      branchId: effectiveBranchId,
       cashierId: userProfile?.id,
       reason: finalReason,
       paymentType: resolvedMethod,
-      amount: calculatedRefundAmount,
-      items: selectedItemsPayload,
+      amount: roundedAmount,
+      items: refundMode === "ITEMS" ? selectedItemsPayload : [],
     };
 
     setSubmitting(true);
     try {
       const createdRefund = await dispatch(createRefund(refundDTO)).unwrap();
-      if (branch?.id) {
-        dispatch(getRefundsByBranch(branch.id));
-        dispatch(getOrdersByBranch({ branchId: branch.id }));
-        dispatch(getInventoryByBranch(branch.id));
+
+      if (effectiveBranchId) {
+        dispatch(getRefundsByBranch(effectiveBranchId));
+        dispatch(getOrdersByBranch({ branchId: effectiveBranchId }));
+        dispatch(getInventoryByBranch(effectiveBranchId));
       }
-      const actualAmount = Number(
-        createdRefund?.amount ?? calculatedRefundAmount ?? 0,
-      );
+      dispatch(getRefundsByOrder(selectedOrder.id));
+      dispatch(getOrderById(selectedOrder.id));
+      if (isCashier) {
+        dispatch(getCurrentShiftProgress());
+      }
+
+      const actualAmount = Number(createdRefund?.amount ?? roundedAmount ?? 0);
+      const isOrderFullyRefunded =
+        remainingRefundable - actualAmount <= 0.01;
+
+      handleClearSelection();
+      setAmountOnlyInput("");
+
       if (onRefundSuccess) {
         onRefundSuccess({
           id: createdRefund?.id,
           reason: finalReason,
           refundMethod: resolvedMethod,
           amount: actualAmount,
+          refundMode,
+          isOrderFullyRefunded,
           items:
             createdRefund?.items && createdRefund.items.length > 0
               ? createdRefund.items
-              : selectedReceiptItems,
+              : refundMode === "ITEMS"
+                ? selectedReceiptItems
+                : [],
         });
       }
       setShowReceiptDialog(true);
       toast({
-        title: returningAllRemaining
+        title: isOrderFullyRefunded
           ? "Full Refund Processed"
           : "Partial Refund Processed",
-        description: `Refund of ₫${actualAmount.toLocaleString("vi-VN")} (${totalSelectedQty} item(s)) processed via ${resolvedMethod}. Inventory restored immediately.`,
+        description:
+          refundMode === "ITEMS"
+            ? `Refund of ₫${actualAmount.toLocaleString("vi-VN")} (${totalSelectedQty} item(s)) processed via ${resolvedMethod}. Inventory restored immediately.`
+            : `Amount refund of ₫${actualAmount.toLocaleString("vi-VN")} processed via ${resolvedMethod}.`,
       });
     } catch (error) {
       toast({
         title: "Refund Failed",
-        description: error || "Failed to process refund. Please try again.",
+        description: normalizeRefundError(error),
         variant: "destructive",
       });
     } finally {
@@ -297,121 +343,359 @@ const ReturnItemsSection = ({
   };
 
   return (
-    <div className="w-1/2 p-4 flex flex-col overflow-y-auto">
-      <Card className="mt-2">
+    <div className="w-full lg:w-1/2 p-4 flex flex-col min-h-0 overflow-y-auto">
+      <Card className="mt-1">
         <CardContent className="p-4 space-y-4">
-          {/* Danh sách chọn sản phẩm & số lượng hoàn trả (Partial hoặc Full Refund) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="font-semibold">
-                Items &amp; Quantities to Return
-              </Label>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={handleSelectAllRemaining}
-                >
-                  Select All
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={handleClearSelection}
-                >
-                  Clear
-                </Button>
-              </div>
-            </div>
+          <Tabs
+            value={refundMode}
+            onValueChange={(val) => {
+              setRefundMode(val);
+              setValidationError(null);
+            }}
+            className="w-full"
+          >
+            <TabsList className="w-full grid grid-cols-2 h-10">
+              <TabsTrigger
+                value="ITEMS"
+                disabled={!hasAnyReturnableQty}
+                className="text-xs sm:text-sm"
+              >
+                Return Items ({returnableItems.reduce((s, i) => s + i.remainingQty, 0)} left)
+              </TabsTrigger>
+              <TabsTrigger
+                value="AMOUNT"
+                disabled={remainingRefundable <= 0}
+                className="text-xs sm:text-sm"
+              >
+                Partial Amount Only
+              </TabsTrigger>
+            </TabsList>
 
-            <div className="border rounded-lg divide-y max-h-56 overflow-y-auto">
-              {returnableItems.map((item) => {
-                const selectedQty = Number(
-                  returnQuantities[item.orderItemId] ?? 0,
-                );
-                const isExhausted = item.remainingQty <= 0;
-
-                return (
-                  <div
-                    key={item.orderItemId}
-                    className={`p-2.5 flex items-center justify-between gap-3 text-sm ${
-                      isExhausted ? "opacity-50 bg-muted/40" : ""
-                    }`}
+            <TabsContent value="ITEMS" className="space-y-3 pt-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Label className="font-semibold">
+                    Items &amp; Quantities to Return
+                  </Label>
+                  {totalSelectedQty > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      {totalSelectedQty} selected
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2.5 text-xs"
+                    disabled={!hasAnyReturnableQty}
+                    onClick={handleSelectAllRemaining}
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium truncate">
-                        {item.productName}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        ₫{Math.round(item.netUnitPrice).toLocaleString("vi-VN")}{" "}
-                        / unit • Returnable: {item.remainingQty} /{" "}
-                        {item.orderedQty}
-                        {netOrderFactor !== 1 && " (net of tax/discount)"}
-                      </div>
-                    </div>
+                    Select All
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2.5 text-xs"
+                    disabled={totalSelectedQty <= 0 && !adjustItemizedAmount}
+                    onClick={handleClearSelection}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
 
-                    {isExhausted ? (
-                      <Badge variant="secondary" className="text-xs">
-                        Already Returned
-                      </Badge>
-                    ) : (
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={selectedQty <= 0}
-                          onClick={() =>
+              <div className="border rounded-lg divide-y max-h-80 overflow-y-auto">
+                {returnableItems.map((item) => {
+                  const selectedQty = Number(
+                    returnQuantities[item.orderItemId] ?? 0,
+                  );
+                  const isExhausted = item.remainingQty <= 0;
+                  const isChecked = selectedQty > 0;
+                  const rowRefundPreview = Math.round(
+                    item.netUnitPrice * selectedQty,
+                  );
+
+                  return (
+                    <div
+                      key={item.orderItemId}
+                      className={`p-2.5 flex items-center justify-between gap-3 text-sm ${
+                        isExhausted
+                          ? "opacity-50 bg-muted/40"
+                          : isChecked
+                            ? "bg-primary/5"
+                            : ""
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <Checkbox
+                          checked={isChecked}
+                          disabled={isExhausted}
+                          aria-label={`Select ${item.productName}`}
+                          className="mt-1 shrink-0"
+                          onCheckedChange={(checked) =>
                             updateItemQuantity(
                               item.orderItemId,
                               item.remainingQty,
-                              selectedQty - 1,
+                              checked ? item.remainingQty : 0,
                             )
                           }
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </Button>
-                        <span className="w-8 text-center font-semibold">
-                          {selectedQty}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={selectedQty >= item.remainingQty}
-                          onClick={() =>
-                            updateItemQuantity(
-                              item.orderItemId,
-                              item.remainingQty,
-                              selectedQty + 1,
-                            )
-                          }
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </Button>
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium truncate">
+                            {item.productName}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            ₫
+                            {Math.round(item.netUnitPrice).toLocaleString(
+                              "vi-VN",
+                            )}{" "}
+                            / unit • Returnable: {item.remainingQty} /{" "}
+                            {item.orderedQty}
+                            {item.prevReturned > 0 &&
+                              ` • Returned: ${item.prevReturned}`}
+                            {netOrderFactor !== 1 && " (net of tax/discount)"}
+                          </div>
+                          {selectedQty > 0 && (
+                            <div className="text-xs font-medium text-emerald-600 mt-0.5">
+                              Refund line: ₫
+                              {rowRefundPreview.toLocaleString("vi-VN")}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {isExhausted ? (
+                        <Badge variant="secondary" className="text-xs shrink-0">
+                          Already Returned
+                        </Badge>
+                      ) : (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            disabled={selectedQty <= 0}
+                            aria-label={`Decrease ${item.productName}`}
+                            onClick={() =>
+                              updateItemQuantity(
+                                item.orderItemId,
+                                item.remainingQty,
+                                selectedQty - 1,
+                              )
+                            }
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </Button>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={item.remainingQty}
+                            value={selectedQty}
+                            aria-label={`Quantity to return for ${item.productName}`}
+                            onChange={(e) =>
+                              updateItemQuantity(
+                                item.orderItemId,
+                                item.remainingQty,
+                                e.target.value,
+                              )
+                            }
+                            className="h-8 w-14 text-center px-1 font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            disabled={selectedQty >= item.remainingQty}
+                            aria-label={`Increase ${item.productName}`}
+                            onClick={() =>
+                              updateItemQuantity(
+                                item.orderItemId,
+                                item.remainingQty,
+                                selectedQty + 1,
+                              )
+                            }
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="pt-1 space-y-2">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                  <Checkbox
+                    checked={adjustItemizedAmount}
+                    disabled={totalSelectedQty <= 0}
+                    onCheckedChange={(checked) => {
+                      const next = Boolean(checked);
+                      setAdjustItemizedAmount(next);
+                      if (next) {
+                        setManualItemizedAmount(
+                          calculatedRefundAmount > 0
+                            ? String(calculatedRefundAmount)
+                            : "",
+                        );
+                      }
+                    }}
+                  />
+                  <span>
+                    Adjust refund amount (e.g. deduct restocking / damage fee)
+                  </span>
+                </label>
+
+                {adjustItemizedAmount && totalSelectedQty > 0 && (
+                  <div className="p-3 rounded-md border bg-muted/30 space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Default item value:</span>
+                      <span>
+                        ₫{Math.round(itemsRefundValue).toLocaleString("vi-VN")}
+                      </span>
+                    </div>
+                    <div>
+                      <Label
+                        htmlFor="manual-itemized-amount"
+                        className="text-xs mb-1 block"
+                      >
+                        Custom Refund Amount (max ₫
+                        {Math.round(maxAllowedForItemized).toLocaleString(
+                          "vi-VN",
+                        )}
+                        )
+                      </Label>
+                      <Input
+                        id="manual-itemized-amount"
+                        type="number"
+                        min={1}
+                        max={maxAllowedForItemized}
+                        step="100"
+                        value={manualItemizedAmount}
+                        aria-invalid={
+                          validationError?.field === "amount" &&
+                          refundMode === "ITEMS"
+                        }
+                        onChange={(e) => {
+                          setManualItemizedAmount(e.target.value);
+                          setValidationError(null);
+                        }}
+                        className={`h-9 ${
+                          validationError?.field === "amount" &&
+                          refundMode === "ITEMS"
+                            ? "border-destructive ring-1 ring-destructive"
+                            : ""
+                        }`}
+                      />
+                    </div>
+                    {itemizedFeeRetained > 0 && (
+                      <div className="text-xs text-amber-600">
+                        Fee retained: ₫
+                        {Math.round(itemizedFeeRetained).toLocaleString("vi-VN")}
                       </div>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="AMOUNT" className="space-y-3 pt-2">
+              <div className="p-3 rounded-lg border bg-muted/30 text-xs text-muted-foreground">
+                Hoàn một phần tiền trực tiếp (bù trừ lỗi sản phẩm, hoàn nốt số
+                tiền còn lại...). Chỉ hoàn trả số dư và{" "}
+                <strong>không thay đổi tồn kho</strong> (trừ khi đạt 100% giá
+                trị đơn hàng).
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <Label htmlFor="amount-only-input" className="font-semibold">
+                    Partial Refund Amount (VND)
+                  </Label>
+                  <span className="text-xs text-muted-foreground">
+                    Max: ₫
+                    {Math.round(remainingRefundable).toLocaleString("vi-VN")}
+                  </span>
+                </div>
+                <Input
+                  id="amount-only-input"
+                  type="number"
+                  min={1}
+                  max={remainingRefundable}
+                  step="1000"
+                  placeholder="Enter amount to refund..."
+                  value={amountOnlyInput}
+                  aria-invalid={
+                    validationError?.field === "amount" &&
+                    refundMode === "AMOUNT"
+                  }
+                  onChange={(e) => {
+                    setAmountOnlyInput(e.target.value);
+                    setValidationError(null);
+                  }}
+                  className={`h-10 ${
+                    validationError?.field === "amount" &&
+                    refundMode === "AMOUNT"
+                      ? "border-destructive ring-1 ring-destructive"
+                      : ""
+                  }`}
+                />
+                <div className="flex flex-wrap gap-2">
+                  {[0.25, 0.5, 1].map((ratio) => {
+                    const preset =
+                      ratio === 1
+                        ? Math.round(remainingRefundable * 100) / 100
+                        : Math.round(remainingRefundable * ratio);
+                    return (
+                      <Button
+                        key={ratio}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={preset <= 0}
+                        onClick={() => {
+                          setAmountOnlyInput(String(preset));
+                          setValidationError(null);
+                        }}
+                      >
+                        {ratio === 1
+                          ? "Remaining (100%)"
+                          : `${Math.round(ratio * 100)}% (₫${preset.toLocaleString("vi-VN")})`}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
 
           <div>
             <Label htmlFor="return-reason" className="mb-2 block">
-              Return Reason
+              Return Reason <span className="text-destructive">*</span>
             </Label>
             <Select
               value={returnReason}
-              onValueChange={(value) => setReturnReason(value)}
+              onValueChange={(value) => {
+                setReturnReason(value);
+                setValidationError(null);
+              }}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger
+                id="return-reason"
+                ref={returnReasonTriggerRef}
+                aria-invalid={validationError?.field === "returnReason"}
+                className={`w-full ${
+                  validationError?.field === "returnReason"
+                    ? "border-destructive ring-1 ring-destructive focus:ring-destructive"
+                    : ""
+                }`}
+              >
                 <SelectValue placeholder="Select a reason..." />
               </SelectTrigger>
               <SelectContent>
@@ -422,19 +706,41 @@ const ReturnItemsSection = ({
                 ))}
               </SelectContent>
             </Select>
+            {validationError?.field === "returnReason" && (
+              <p className="text-xs font-medium text-destructive mt-1.5 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{validationError.description}</span>
+              </p>
+            )}
           </div>
 
           {returnReason === "Other" && (
             <div>
               <Label htmlFor="other-reason" className="mb-2 block">
-                Specify Reason
+                Specify Reason <span className="text-destructive">*</span>
               </Label>
               <Textarea
                 id="other-reason"
+                ref={otherReasonRef}
                 placeholder="Please specify the return reason"
                 value={otherReason}
-                onChange={(e) => setOtherReason(e.target.value)}
+                aria-invalid={validationError?.field === "otherReason"}
+                onChange={(e) => {
+                  setOtherReason(e.target.value);
+                  setValidationError(null);
+                }}
+                className={
+                  validationError?.field === "otherReason"
+                    ? "border-destructive ring-1 ring-destructive"
+                    : ""
+                }
               />
+              {validationError?.field === "otherReason" && (
+                <p className="text-xs font-medium text-destructive mt-1.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{validationError.description}</span>
+                </p>
+              )}
             </div>
           )}
 
@@ -443,7 +749,7 @@ const ReturnItemsSection = ({
               Refund Method
             </Label>
             <Select value={refundMethod} onValueChange={setRefundMethod}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="refund-method" className="w-full">
                 <SelectValue placeholder="Select refund method..." />
               </SelectTrigger>
               <SelectContent>
@@ -462,34 +768,60 @@ const ReturnItemsSection = ({
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>Refund Type:</span>
               <span>
-                {totalSelectedQty === 0
-                  ? "None selected"
-                  : returningAllRemaining
-                    ? alreadyRefunded > 0
-                      ? "Final Remaining Refund"
-                      : "Full Order Refund"
-                    : `Partial Refund (${totalSelectedQty} item(s))`}
+                {refundMode === "AMOUNT"
+                  ? effectiveRefundAmount > 0 &&
+                    remainingRefundable - effectiveRefundAmount <= 0.01
+                    ? "Final Remaining Amount Refund"
+                    : "Partial Amount Refund"
+                  : totalSelectedQty === 0
+                    ? "None selected"
+                    : returningAllRemaining
+                      ? alreadyRefunded > 0
+                        ? "Final Remaining Refund"
+                        : "Full Order Refund"
+                      : `Partial Refund (${totalSelectedQty} item(s))`}
               </span>
             </div>
             <div className="flex justify-between text-lg font-semibold">
               <span>Total Refund Amount:</span>
               <span>
-                ₫{Number(calculatedRefundAmount || 0).toLocaleString("vi-VN")}
+                ₫
+                {Math.max(0, Number(effectiveRefundAmount || 0)).toLocaleString(
+                  "vi-VN",
+                )}
               </span>
             </div>
           </div>
+
+          {validationError && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive flex items-start gap-2"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">{validationError.title}</p>
+                <p>{validationError.description}</p>
+              </div>
+            </div>
+          )}
 
           <Button
             className="w-full"
             onClick={processRefund}
             disabled={
-              submitting || totalSelectedQty <= 0 || remainingRefundable <= 0
+              submitting ||
+              remainingRefundable <= 0 ||
+              (refundMode === "ITEMS"
+                ? totalSelectedQty <= 0
+                : !(Number(amountOnlyInput) > 0))
             }
           >
             {submitting
               ? "Processing Refund..."
-              : `Process Refund (₫${Number(
-                  calculatedRefundAmount || 0,
+              : `Process Refund (₫${Math.max(
+                  0,
+                  Number(effectiveRefundAmount || 0),
                 ).toLocaleString("vi-VN")})`}
           </Button>
         </CardContent>

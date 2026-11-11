@@ -35,11 +35,11 @@ export const login = createAsyncThunk(
       }
 
       // Check store status for all non-Super-Admin users
-      if (data?.jwt && data?.user?.role && data.user.role !== "ROLE_ADMIN") {
+      if (data?.jwt && data?.user?.role && data.user.role !== "ROLE_SUPER_ADMIN") {
         try {
           const authHeader = { Authorization: `Bearer ${data.jwt}` };
           let storeData = null;
-          if (data.user.role === "ROLE_STORE_ADMIN") {
+          if (data.user.role === "ROLE_STORE_OWNER") {
             const storeRes = await api.get("/api/stores/admin", {
               headers: authHeader,
             });

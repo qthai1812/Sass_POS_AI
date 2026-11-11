@@ -10,6 +10,7 @@ import {
   getCurrentShiftProgress,
 } from "../../../Redux Toolkit/features/shiftReport/shiftReportThunks";
 import { PlayCircle, CheckCircle2, Loader2 } from "lucide-react";
+import UserProfileMenu from "@/components/account/UserProfileMenu";
 
 const POSHeader = () => {
   const { setSidebarOpen } = useSidebar();
@@ -97,15 +98,15 @@ const POSHeader = () => {
           )}
         </div>
 
-        {/* 2. CỘT GIỮA (6/12): POS TERMINAL NỔI BẬT & CĂN GIỮA */}
-        <div className="col-span-8 md:col-span-6 flex flex-col items-center justify-center text-center">
+        {/* 2. CỘT GIỮA: POS TERMINAL NỔI BẬT & CĂN GIỮA */}
+        <div className="col-span-6 md:col-span-5 flex flex-col items-center justify-center text-center">
           <div className="inline-flex items-center gap-2.5 bg-emerald-500/10 border border-emerald-500/30 px-4 md:px-5 py-1.5 rounded-full shadow-sm">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
 
-            <h1 className="text-lg md:text-2xl font-black tracking-widest bg-gradient-to-r from-emerald-600 to-teal-700 bg-clip-text text-transparent uppercase">
+            <h1 className="text-base md:text-2xl font-black tracking-widest bg-gradient-to-r from-emerald-600 to-teal-700 bg-clip-text text-transparent uppercase">
               POS Terminal
             </h1>
           </div>
@@ -114,27 +115,28 @@ const POSHeader = () => {
           </p>
         </div>
 
-        {/* 3. CỘT PHẢI (3/12): Khu vực phím tắt */}
-        <div className="hidden md:flex md:col-span-3 items-center justify-end">
+        {/* 3. CỘT PHẢI: Khu vực phím tắt + Tài khoản đăng nhập */}
+        <div className="col-span-2 md:col-span-4 flex items-center justify-end gap-2.5">
           <Badge
             variant="outline"
-            className="hidden lg:inline-flex py-1.5 px-3 bg-muted/30 shadow-sm font-medium"
+            className="hidden xl:inline-flex py-1.5 px-3 bg-muted/30 shadow-sm font-medium"
           >
             <span className="font-mono font-bold text-foreground mr-1">
               F1:
             </span>{" "}
             Tìm kiếm
-            <span className="text-border mx-2">|</span>
+            <span className="text-border mx-1.5">|</span>
             <span className="font-mono font-bold text-foreground mr-1">
               F2:
             </span>{" "}
-            Khuyến mãi
-            <span className="text-border mx-2">|</span>
+            KM
+            <span className="text-border mx-1.5">|</span>
             <span className="font-mono font-bold text-foreground mr-1">
               Ctrl+Enter:
             </span>{" "}
             Thanh toán
           </Badge>
+          <UserProfileMenu />
         </div>
       </div>
     </div>

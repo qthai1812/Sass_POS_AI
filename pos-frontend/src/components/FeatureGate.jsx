@@ -23,7 +23,7 @@ export default function FeatureGate({ feature, title, children }) {
     return children;
   }
 
-  const canUpgrade = role === "ROLE_STORE_ADMIN" || role === "ROLE_STORE_MANAGER";
+  const canUpgrade = role === "ROLE_STORE_OWNER";
 
   return (
     <div className="flex items-center justify-center py-16">

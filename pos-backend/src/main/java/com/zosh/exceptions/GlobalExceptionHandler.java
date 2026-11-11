@@ -108,7 +108,7 @@ public class GlobalExceptionHandler {
             return buildResponse(msg, HttpStatus.NOT_FOUND);
         }
         if (lower.contains("permission") || lower.contains("only store admin")
-                || lower.contains("not authorized") || lower.contains("cannot assign role_admin")
+                || lower.contains("not authorized") || lower.contains("cannot assign role_super_admin") || lower.contains("cannot assign role_admin")
                 || lower.contains("blocked")) {
             return buildResponse(msg, HttpStatus.FORBIDDEN);
         }
@@ -123,7 +123,11 @@ public class GlobalExceptionHandler {
                 || lower.contains("does not belong") || lower.contains("no longer available")
                 || lower.contains("not assigned") || lower.contains("failed to deduct inventory")
                 || lower.contains("pending") || lower.contains("vui lòng")
-                || lower.contains("bắt đầu ca")) {
+                || lower.contains("bắt đầu ca") || lower.contains("chờ")
+                || lower.contains("không thể") || lower.contains("đã tồn tại")
+                || lower.contains("không xác định") || lower.contains("không thuộc")
+                || lower.contains("vượt quá") || lower.contains("tối đa")
+                || lower.contains("tối thiểu") || lower.contains("hết hạn")) {
             return buildResponse(msg, HttpStatus.BAD_REQUEST);
         }
 

@@ -4,27 +4,69 @@ import { useDispatch, useSelector } from "react-redux";
 import { useEffect, useState } from "react";
 import {
   getStoreByAdmin,
-  getStoreByEmployee,
+  updateStore,
 } from "../../../Redux Toolkit/features/store/storeThunks";
 import StoreSidebar from "./StoreSidebar";
 import StoreTopbar from "./StoreTopbar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function StoreDashboard({ children }) {
   const dispatch = useDispatch();
+  const { toast } = useToast();
   const { store } = useSelector((state) => state.store);
   const { userProfile } = useSelector((state) => state.user);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const [resubmitBrand, setResubmitBrand] = useState("");
+  const [resubmitDesc, setResubmitDesc] = useState("");
+  const [resubmitting, setResubmitting] = useState(false);
+
   useEffect(() => {
     if (localStorage.getItem("jwt") && userProfile?.id && !store?.id) {
-      if (userProfile?.role === "ROLE_STORE_MANAGER") {
-        dispatch(getStoreByEmployee());
-      } else {
-        dispatch(getStoreByAdmin(localStorage.getItem("jwt")));
-      }
+      dispatch(getStoreByAdmin(localStorage.getItem("jwt")));
     }
-  }, [dispatch, store?.id, userProfile?.id, userProfile?.role]);
+  }, [dispatch, store?.id, userProfile?.id]);
+
+  useEffect(() => {
+    if (store) {
+      setResubmitBrand(store.brand || "");
+      setResubmitDesc(store.description || "");
+    }
+  }, [store]);
+
+  const handleResubmitStore = async (e) => {
+    e.preventDefault();
+    if (!store?.id) return;
+    setResubmitting(true);
+    try {
+      await dispatch(
+        updateStore({
+          id: store.id,
+          storeData: {
+            brand: resubmitBrand.trim() || store.brand,
+            description: resubmitDesc.trim(),
+          },
+        }),
+      ).unwrap();
+      toast({
+        title: "Đã gửi lại hồ sơ cửa hàng",
+        description:
+          "Hồ sơ cửa hàng đã chuyển sang trạng thái chờ phê duyệt (PENDING).",
+      });
+    } catch (err) {
+      toast({
+        title: "Lỗi gửi lại hồ sơ",
+        description: String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setResubmitting(false);
+    }
+  };
 
   if (store?.status === "PENDING") {
     return (
@@ -46,6 +88,67 @@ export default function StoreDashboard({ children }) {
           >
             Back to Login
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (store?.status === "REJECTED") {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background p-4">
+        <div className="max-w-lg w-full p-8 bg-card border border-orange-300 rounded-xl shadow-lg space-y-4">
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-bold text-orange-600">
+              Hồ sơ đăng ký cửa hàng bị từ chối (Rejected)
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Cửa hàng <strong>{store?.brand}</strong> cần cập nhật lại thông tin theo yêu cầu của Quản trị viên hệ thống trước khi kích hoạt.
+            </p>
+            {store?.rejectionReason && (
+              <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30 text-sm text-orange-800 dark:text-orange-200 text-left">
+                <strong>Lý do từ chối:</strong> {store.rejectionReason}
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleResubmitStore} className="space-y-3 text-left">
+            <div>
+              <label className="text-xs font-semibold block mb-1">
+                Tên thương hiệu cửa hàng
+              </label>
+              <Input
+                value={resubmitBrand}
+                onChange={(e) => setResubmitBrand(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold block mb-1">
+                Mô tả / Ghi chú bổ sung hồ sơ
+              </label>
+              <Textarea
+                rows={3}
+                value={resubmitDesc}
+                onChange={(e) => setResubmitDesc(e.target.value)}
+                placeholder="Cập nhật thông tin cửa hàng để gửi duyệt lại..."
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  localStorage.clear();
+                  window.location.href = "/auth/login";
+                }}
+              >
+                Quay lại Đăng nhập
+              </Button>
+              <Button type="submit" disabled={resubmitting}>
+                {resubmitting ? "Đang gửi..." : "Cập nhật & Gửi duyệt lại"}
+              </Button>
+            </div>
+          </form>
         </div>
       </div>
     );

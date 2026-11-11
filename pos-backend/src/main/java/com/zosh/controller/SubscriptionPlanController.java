@@ -17,14 +17,14 @@ public class SubscriptionPlanController {
 
     private final SubscriptionPlanService subscriptionPlanService;
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @PostMapping
     public ResponseEntity<SubscriptionPlanDTO> createPlan(
             @RequestBody SubscriptionPlanDTO dto) {
         return ResponseEntity.ok(subscriptionPlanService.createPlan(dto));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @PutMapping("/{id}")
     public ResponseEntity<SubscriptionPlanDTO> updatePlan(
             @PathVariable Long id,
@@ -45,7 +45,7 @@ public class SubscriptionPlanController {
         return ResponseEntity.ok(subscriptionPlanService.getPlanById(id));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse> deletePlan(
             @PathVariable Long id) throws Exception {

@@ -1,87 +1,104 @@
-import React, { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { useToast } from '@/components/ui/use-toast'
-import {
-  Eye,
-  EyeOff,
-  Mail,
-  Lock,
-  ShoppingCart,
-} from 'lucide-react'
-import { Link, useNavigate } from 'react-router'
-import { useDispatch } from 'react-redux'
-import { login } from '@/Redux Toolkit/features/auth/authThunk'
-import { getUserProfile } from '../../../Redux Toolkit/features/user/userThunks'
-import { startShift } from '../../../Redux Toolkit/features/shiftReport/shiftReportThunks'
-import { ThemeToggle } from '../../../components/theme-toggle'
+import React, { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/use-toast";
+import { Eye, EyeOff, Mail, Lock, ShoppingCart } from "lucide-react";
+import { Link, useNavigate } from "react-router";
+import { useDispatch } from "react-redux";
+import { login } from "@/Redux Toolkit/features/auth/authThunk";
+import { getUserProfile } from "../../../Redux Toolkit/features/user/userThunks";
+import { startShift } from "../../../Redux Toolkit/features/shiftReport/shiftReportThunks";
+import { ThemeToggle } from "../../../components/theme-toggle";
+
+const REMEMBERED_EMAIL_KEY = "pos_remembered_email";
+
+const getInitialRememberedEmail = () => {
+  try {
+    return localStorage.getItem(REMEMBERED_EMAIL_KEY) || "";
+  } catch {
+    return "";
+  }
+};
 
 const Login = () => {
-  const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() =>
+    Boolean(getInitialRememberedEmail()),
+  );
 
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  })
+  const [formData, setFormData] = useState(() => ({
+    email: getInitialRememberedEmail(),
+    password: "",
+  }));
 
-  const dispatch = useDispatch()
-  const navigate = useNavigate()
-  const { toast } = useToast()
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({
+    const { name, value } = e.target;
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
-    }))
-  }
+      [name]: value,
+    }));
+  };
 
   const handleLogin = async (e) => {
-    e.preventDefault()
-    setIsLoading(true)
+    e.preventDefault();
+    setIsLoading(true);
     try {
-      const resultAction = await dispatch(login(formData))
+      const resultAction = await dispatch(login(formData));
       if (login.fulfilled.match(resultAction)) {
+        try {
+          if (rememberMe && formData.email.trim()) {
+            localStorage.setItem(REMEMBERED_EMAIL_KEY, formData.email.trim());
+          } else {
+            localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+          }
+        } catch {
+          // Ignore storage quota / privacy mode errors
+        }
+
         toast({
           title: "Success",
           description: "Login successful!",
-        })
+        });
 
-        const user = resultAction.payload.user
-        await dispatch(getUserProfile(resultAction.payload.jwt))
+        const user = resultAction.payload.user;
+        await dispatch(getUserProfile(resultAction.payload.jwt));
 
-        // Redirect based on user role (including ROLE_ADMIN for Super Admin)
-        const userRole = user?.role
-        if (userRole === 'ROLE_ADMIN') {
-          navigate('/super-admin/dashboard')
-        } else if (userRole === 'ROLE_BRANCH_CASHIER') {
-          navigate('/cashier')
-          dispatch(startShift(user.branchId))
-        } else if (userRole === 'ROLE_STORE_ADMIN' || userRole === 'ROLE_STORE_MANAGER') {
-          navigate('/store')
-        } else if (userRole === 'ROLE_BRANCH_MANAGER') {
-          navigate('/branch')
+        // Redirect based on user role (including ROLE_SUPER_ADMIN for Super Admin)
+        const userRole = user?.role;
+        if (userRole === "ROLE_SUPER_ADMIN") {
+          navigate("/super-admin/dashboard");
+        } else if (userRole === "ROLE_CASHIER") {
+          navigate("/cashier");
+          dispatch(startShift(user.branchId));
+        } else if (userRole === "ROLE_STORE_OWNER") {
+          navigate("/store");
+        } else if (userRole === "ROLE_BRANCH_MANAGER") {
+          navigate("/branch");
         } else {
-          navigate('/')
+          navigate("/");
         }
       } else {
         toast({
           title: "Error",
-          description: resultAction.payload || 'Login failed',
+          description: resultAction.payload || "Login failed",
           variant: "destructive",
-        })
+        });
       }
     } catch (err) {
       toast({
         title: "Error",
-        description: err?.message || 'Login failed',
+        description: err?.message || "Login failed",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 flex items-center justify-center p-4 relative">
@@ -97,9 +114,7 @@ const Login = () => {
             </div>
             <span className="text-2xl font-bold text-foreground">POS Pro</span>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">
-            Welcome Back
-          </h1>
+          <h1 className="text-2xl font-bold text-foreground">Welcome Back</h1>
           <p className="text-muted-foreground mt-2">
             Sign in to your account to continue
           </p>
@@ -109,7 +124,10 @@ const Login = () => {
         <div className="bg-card rounded-2xl shadow-xl p-8 border border-border">
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-foreground mb-2"
+              >
                 Email Address
               </label>
               <div className="relative">
@@ -130,7 +148,10 @@ const Login = () => {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-foreground mb-2">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-foreground mb-2"
+              >
                 Password
               </label>
               <div className="relative">
@@ -167,9 +188,14 @@ const Login = () => {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
                   className="h-4 w-4 text-primary focus:ring-primary border-border rounded"
                 />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-foreground">
+                <label
+                  htmlFor="remember-me"
+                  className="ml-2 block text-sm text-foreground"
+                >
                   Remember me
                 </label>
               </div>
@@ -192,7 +218,7 @@ const Login = () => {
                   Signing in...
                 </div>
               ) : (
-                'Sign In'
+                "Sign In"
               )}
             </Button>
           </form>
@@ -203,7 +229,9 @@ const Login = () => {
                 <div className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-card text-muted-foreground">Or continue with</span>
+                <span className="px-2 bg-card text-muted-foreground">
+                  Or continue with
+                </span>
               </div>
             </div>
             <div className="mt-4">
@@ -211,7 +239,7 @@ const Login = () => {
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={() => navigate('/auth/onboarding')}
+                onClick={() => navigate("/auth/onboarding")}
               >
                 Create a new Store Account (Onboarding)
               </Button>
@@ -220,17 +248,21 @@ const Login = () => {
 
           <div className="mt-6 p-4 bg-muted rounded-lg">
             <p className="text-sm text-muted-foreground text-center">
-              <strong>Demo Accounts (Password: 123456):</strong><br />
-              Super Admin: admin@pos.com<br />
-              Store Admin: storeadmin1@pos.com<br />
-              Branch Manager: manager.b1@pos.com<br />
+              <strong>Demo Accounts (Password: 123456):</strong>
+              <br />
+              Super Admin: admin@pos.com
+              <br />
+              Store Admin: storeadmin1@pos.com
+              <br />
+              Branch Manager: manager.b1@pos.com
+              <br />
               Cashier: cashier.b1@pos.com
             </p>
           </div>
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Login
+export default Login;

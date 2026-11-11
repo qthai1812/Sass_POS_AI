@@ -35,7 +35,7 @@ const Onboarding = () => {
         setLocalLoading(true);
         try {
           const userRes = await dispatch(getUserProfile(jwt)).unwrap();
-          if (userRes && userRes.role === 'ROLE_STORE_ADMIN') {
+          if (userRes && userRes.role === 'ROLE_STORE_OWNER') {
             setFormData((prev) => ({
               ...prev,
               fullName: userRes.fullName || prev.fullName,
@@ -73,7 +73,7 @@ const Onboarding = () => {
           fullName: updatedFormData.fullName,
           email: updatedFormData.email,
           password: updatedFormData.password,
-          role: 'ROLE_STORE_ADMIN',
+          role: 'ROLE_STORE_OWNER',
         })).unwrap();
         if (signupRes && signupRes.jwt) {
           localStorage.setItem('jwt', signupRes.jwt);

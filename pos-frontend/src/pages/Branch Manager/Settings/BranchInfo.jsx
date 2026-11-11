@@ -52,11 +52,17 @@ const BranchInfo = () => {
 
   const handleSaveSettings = async () => {
     if (!branch?.id) return;
+    const payload = {
+      ...branchInfo,
+      email: branchInfo.email?.trim() || undefined,
+      openTime: branchInfo.openTime || undefined,
+      closeTime: branchInfo.closeTime || undefined,
+    };
     try {
       await dispatch(
         updateBranch({
           id: branch.id,
-          dto: branchInfo,
+          dto: payload,
           jwt: localStorage.getItem("jwt"),
         })
       ).unwrap();

@@ -17,6 +17,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Search,
@@ -27,19 +29,22 @@ import {
   Star,
   Plus,
   Award,
+  Trash2,
 } from "lucide-react";
-import { getStatusColor } from "../../../utils/getStatusColor";
+import { getStatusColor } from "@/utils/getStatusColor";
 import {
   getAllCustomers,
   updateCustomer,
+  deleteCustomer,
 } from "@/Redux Toolkit/features/customer/customerThunks";
 import { getOrdersByCustomer } from "@/Redux Toolkit/features/order/orderThunks";
 import { clearCustomerOrders } from "@/Redux Toolkit/features/order/orderSlice";
 import { useToast } from "@/components/ui/use-toast";
-import AddPointsDialog from "../../cashier/customer/components/AddPointsDialog";
-import { getLoyaltyTier } from "../../cashier/customer/components/CustomerDetails";
+import AddPointsDialog from "@/pages/cashier/customer/components/AddPointsDialog";
+import { getLoyaltyTier } from "@/pages/cashier/customer/components/CustomerDetails";
 
-const Customers = () => {
+const Customers = ({ scope = "BRANCH" }) => {
+  const isStoreScope = scope === "STORE";
   const { customers = [], loading } = useSelector((state) => state.customer);
   const { customerOrders = [], loading: ordersLoading } = useSelector(
     (state) => state.order,
@@ -52,6 +57,8 @@ const Customers = () => {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [showAddPointsDialog, setShowAddPointsDialog] = useState(false);
   const [pointsToAdd, setPointsToAdd] = useState(0);
+  const [customerToDelete, setCustomerToDelete] = useState(null);
+  const [deletingCustomer, setDeletingCustomer] = useState(false);
 
   useEffect(() => {
     dispatch(getAllCustomers());
@@ -108,6 +115,33 @@ const Customers = () => {
     }
   };
 
+  const handleConfirmDeleteCustomer = async () => {
+    if (!isStoreScope || !customerToDelete?.id) return;
+    setDeletingCustomer(true);
+    try {
+      await dispatch(deleteCustomer(customerToDelete.id)).unwrap();
+      toast({
+        title: "Customer Deleted",
+        description: `Đã xóa khách hàng ${customerToDelete.fullName} khỏi hệ thống.`,
+      });
+      if (selectedCustomer?.id === customerToDelete.id) {
+        setIsCustomerDialogOpen(false);
+        setSelectedCustomer(null);
+      }
+      setCustomerToDelete(null);
+    } catch (err) {
+      toast({
+        title: "Không thể xóa khách hàng",
+        description: String(
+          err || "Khách hàng đã phát sinh đơn hàng hoặc không đủ quyền xóa.",
+        ),
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingCustomer(false);
+    }
+  };
+
   // Thống kê chính xác từ dữ liệu thực tế
   const goldAndDiamondCount = customers.filter(
     (c) => Number(c.loyaltyPoints || 0) >= 100,
@@ -120,9 +154,23 @@ const Customers = () => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-          Customer Overview
-        </h1>
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+            Customer Overview
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isStoreScope
+              ? "Quản lý danh sách khách hàng, hạng thành viên và lịch sử giao dịch toàn chuỗi."
+              : "Theo dõi khách hàng & cộng điểm thưởng tại chi nhánh. Lịch sử đơn hiển thị theo chi nhánh hiện tại."}
+          </p>
+        </div>
+        <Badge
+          variant="outline"
+          className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 shrink-0"
+        >
+          <Star className="w-3.5 h-3.5 mr-1.5 fill-amber-500 text-amber-500" />
+          Điểm tích lũy &amp; Hạng thành viên áp dụng toàn chuỗi
+        </Badge>
       </div>
 
       {/* Search Bar */}
@@ -159,7 +207,7 @@ const Customers = () => {
           <CardContent className="p-5 sm:p-6">
             <div className="flex flex-col items-center justify-center">
               <h3 className="text-base sm:text-lg font-medium text-muted-foreground">
-                Gold & Diamond Members (≥100 pts)
+                Gold &amp; Diamond Members (≥100 pts)
               </h3>
               <p className="text-2xl sm:text-3xl font-bold mt-2 text-amber-500">
                 {goldAndDiamondCount}
@@ -236,13 +284,26 @@ const Customers = () => {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleOpenCustomerDialog(customer)}
-                          >
-                            View Details
-                          </Button>
+                          <div className="flex justify-end items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenCustomerDialog(customer)}
+                            >
+                              View Details
+                            </Button>
+                            {isStoreScope && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => setCustomerToDelete(customer)}
+                                title="Xóa khách hàng (Chỉ xóa khi chưa có đơn hàng)"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -290,7 +351,7 @@ const Customers = () => {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base sm:text-lg font-semibold">
-                    Profile & Loyalty
+                    Profile &amp; Loyalty
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -332,7 +393,7 @@ const Customers = () => {
                       <Star className="h-5 w-5 text-amber-500 fill-amber-500 shrink-0 mt-0.5" />
                       <div className="min-w-0">
                         <p className="text-xs sm:text-sm font-medium text-muted-foreground">
-                          Loyalty Points
+                          Loyalty Points (Toàn chuỗi)
                         </p>
                         <p className="text-sm sm:text-base font-bold text-amber-600">
                           {selectedCustomer.loyaltyPoints || 0} pts (
@@ -347,10 +408,20 @@ const Customers = () => {
                       <ShoppingBag className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
                       <div className="min-w-0">
                         <p className="text-xs sm:text-sm font-medium text-muted-foreground">
-                          Total Orders
+                          {isStoreScope
+                            ? "Valid Orders (Toàn chuỗi)"
+                            : "Valid Orders (Tại chi nhánh)"}
                         </p>
                         <p className="text-sm sm:text-base font-medium">
-                          {customerOrders.length} orders
+                          {
+                            customerOrders.filter(
+                              (o) =>
+                                !["CANCELLED", "REFUNDED", "PENDING"].includes(
+                                  String(o?.status || "").toUpperCase(),
+                                ),
+                            ).length
+                          }{" "}
+                          / {customerOrders.length} orders
                         </p>
                       </div>
                     </div>
@@ -362,8 +433,15 @@ const Customers = () => {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base sm:text-lg font-semibold">
-                    Order History
+                    {isStoreScope
+                      ? "Order History (Toàn chuỗi)"
+                      : "Order History (Chi nhánh hiện tại)"}
                   </CardTitle>
+                  {!isStoreScope && (
+                    <p className="text-xs text-muted-foreground">
+                      Chỉ hiển thị các đơn hàng phát sinh tại chi nhánh này.
+                    </p>
+                  )}
                 </CardHeader>
                 <CardContent className="p-0 sm:p-6 sm:pt-0 overflow-x-auto">
                   {ordersLoading ? (
@@ -440,6 +518,47 @@ const Customers = () => {
                 </CardContent>
               </Card>
             </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete Customer Confirmation Dialog (Store Owner Only) */}
+      {isStoreScope && customerToDelete && (
+        <Dialog
+          open={Boolean(customerToDelete)}
+          onOpenChange={(open) => {
+            if (!open) setCustomerToDelete(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Xác nhận xóa khách hàng</DialogTitle>
+              <DialogDescription>
+                Chỉ có thể xóa khách hàng khi chưa phát sinh bất kỳ đơn hàng nào để bảo toàn lịch sử kế toán.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2 text-sm">
+              Bạn có chắc chắn muốn xóa khách hàng{" "}
+              <strong>{customerToDelete.fullName}</strong> (
+              {customerToDelete.phone || customerToDelete.email || `#${customerToDelete.id}`}
+              )?
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setCustomerToDelete(null)}
+                disabled={deletingCustomer}
+              >
+                Hủy
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmDeleteCustomer}
+                disabled={deletingCustomer}
+              >
+                {deletingCustomer ? "Đang xóa..." : "Xóa khách hàng"}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

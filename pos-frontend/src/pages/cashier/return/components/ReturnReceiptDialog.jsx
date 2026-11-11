@@ -17,6 +17,8 @@ import {
   TableBody,
   TableCell,
 } from "@/components/ui/table";
+import { getHistoricalUnitPrice } from "../returnUtils";
+import { getBranchPrinterSettings } from "@/utils/branchPrinterSettings";
 
 const ReturnReceiptDialog = ({
   showReceiptDialog,
@@ -27,32 +29,47 @@ const ReturnReceiptDialog = ({
   refundMethod,
   refundAmount,
   returnedItems,
+  refundMode = "ITEMS",
 }) => {
   const { branch } = useSelector((state) => state.branch);
   const { store } = useSelector((state) => state.store);
+  const printerSettings = getBranchPrinterSettings();
 
   const headerTitle = store?.brand || branch?.name || "POS SYSTEM";
   const headerAddress = branch?.address || store?.contact?.address || "";
   const headerPhone = branch?.phone || store?.contact?.phone || "";
-  const footerText = store?.receiptFooter || "Thank you for shopping with us!";
+  const footerText =
+    printerSettings.footerText?.trim() ||
+    store?.receiptFooter ||
+    "Thank you for shopping with us!";
 
   const hasSpecificReturnedItems =
     Array.isArray(returnedItems) && returnedItems.length > 0;
-  const displayItems = hasSpecificReturnedItems
-    ? returnedItems
-    : selectedOrder?.items || [];
   const displayTotalRefund = Number(
     refundAmount ?? selectedOrder?.totalAmount ?? 0,
   );
+  const isAmountOnlyAdjustment =
+    !hasSpecificReturnedItems && refundMode === "AMOUNT";
+  const displayItems = hasSpecificReturnedItems
+    ? returnedItems
+    : isAmountOnlyAdjustment
+      ? []
+      : selectedOrder?.items || [];
 
   return (
     <Dialog open={showReceiptDialog} onOpenChange={setShowReceiptDialog}>
-      <DialogContent>
+      <DialogContent
+        overlayClassName="no-print"
+        data-paper-size={printerSettings.paperSize}
+        className="print-modal-root print-scroll-reset"
+      >
         <DialogHeader>
           <DialogTitle>Return Receipt</DialogTitle>
         </DialogHeader>
-        <div className="bg-background text-foreground p-6 max-h-96 overflow-y-auto border rounded-md">
-          <div className="text-center mb-4">
+        <div className="bg-background text-foreground p-6 max-h-96 overflow-y-auto border rounded-md print-scroll-reset print:border-0 print:p-0">
+          <div
+            className={`text-center mb-4 ${printerSettings.printLogo ? "" : "print:hidden"}`}
+          >
             <h3 className="font-bold text-lg">{headerTitle}</h3>
             {headerAddress && <p className="text-sm">{headerAddress}</p>}
             {headerPhone && <p className="text-sm">Tel: {headerPhone}</p>}
@@ -73,7 +90,9 @@ const ReturnReceiptDialog = ({
               <span className="font-medium">Date:</span>{" "}
               {new Date().toLocaleString()}
             </p>
-            <p className="text-sm">
+            <p
+              className={`text-sm ${printerSettings.printCustomerDetails ? "" : "no-print"}`}
+            >
               <span className="font-medium">Customer:</span>{" "}
               {selectedOrder?.customer?.fullName || "Walk-in Customer"}
             </p>
@@ -88,40 +107,47 @@ const ReturnReceiptDialog = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {displayItems.map((item, idx) => {
-                const qty = Number(item.quantity || 1);
-                const unitPrice = hasSpecificReturnedItems
-                  ? Number(item.unitPrice ?? 0)
-                  : Number(
-                      item.product?.sellingPrice ??
-                        (item.price && qty ? item.price / qty : item.price) ??
-                        0,
-                    );
-                const lineTotal = hasSpecificReturnedItems
-                  ? Number(item.refundAmount ?? unitPrice * qty)
-                  : Number(item.price ?? unitPrice * qty);
-                const itemName =
-                  item.productName ||
-                  item.product?.name ||
-                  "Unknown Product";
+              {isAmountOnlyAdjustment ? (
+                <TableRow>
+                  <TableCell className="py-2 font-medium" colSpan={3}>
+                    Partial Amount Refund (No Stock Returned)
+                  </TableCell>
+                  <TableCell className="text-right py-2 font-medium">
+                    ₫{displayTotalRefund.toLocaleString("vi-VN")}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                displayItems.map((item, idx) => {
+                  const qty = Number(item.quantity || 1);
+                  const unitPrice = hasSpecificReturnedItems
+                    ? Number(item.unitPrice ?? 0)
+                    : getHistoricalUnitPrice(item);
+                  const lineTotal = hasSpecificReturnedItems
+                    ? Number(item.refundAmount ?? unitPrice * qty)
+                    : Number(item.price ?? unitPrice * qty);
+                  const itemName =
+                    item.productName ||
+                    item.product?.name ||
+                    "Unknown Product";
 
-                return (
-                  <TableRow key={item.id || item.orderItemId || idx}>
-                    <TableCell className="py-2">
-                      {itemName.length > 24
-                        ? `${itemName.slice(0, 24)}...`
-                        : itemName}
-                    </TableCell>
-                    <TableCell className="text-center py-2">{qty}</TableCell>
-                    <TableCell className="text-right py-2">
-                      ₫{Number(unitPrice || 0).toLocaleString("vi-VN")}
-                    </TableCell>
-                    <TableCell className="text-right py-2">
-                      ₫{Number(lineTotal || 0).toLocaleString("vi-VN")}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                  return (
+                    <TableRow key={item.id || item.orderItemId || idx}>
+                      <TableCell className="py-2">
+                        {itemName.length > 24
+                          ? `${itemName.slice(0, 24)}...`
+                          : itemName}
+                      </TableCell>
+                      <TableCell className="text-center py-2">{qty}</TableCell>
+                      <TableCell className="text-right py-2">
+                        ₫{Math.round(Number(unitPrice || 0)).toLocaleString("vi-VN")}
+                      </TableCell>
+                      <TableCell className="text-right py-2">
+                        ₫{Math.round(Number(lineTotal || 0)).toLocaleString("vi-VN")}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
           <div className="space-y-1 text-sm mb-4">
@@ -148,7 +174,7 @@ const ReturnReceiptDialog = ({
             </p>
           </div>
         </div>
-        <DialogFooter className="flex justify-between w-full">
+        <DialogFooter className="no-print flex justify-between w-full">
           <Button
             variant="outline"
             className="gap-2"

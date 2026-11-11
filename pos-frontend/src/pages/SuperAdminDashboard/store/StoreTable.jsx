@@ -10,6 +10,15 @@ import {
 } from "../../../components/ui/table";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
+import { Textarea } from "../../../components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../../components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -17,7 +26,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select";
-import { Eye, MoreHorizontal, Ban, CheckCircle, Trash2 } from "lucide-react";
+import {
+  Eye,
+  MoreHorizontal,
+  Ban,
+  CheckCircle,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,6 +61,8 @@ export default function StoreTable({
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState(null);
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   useEffect(() => {
     dispatch(
@@ -64,14 +82,22 @@ export default function StoreTable({
     );
   });
 
-  const handleStatusChange = async (storeId, newStatus) => {
-    setUpdatingId(storeId);
+  const handleStatusChange = async (store, newStatus, reason = undefined) => {
+    if (newStatus === "REJECTED" && !reason) {
+      setRejectTarget(store);
+      setRejectionReason(store?.rejectionReason || "");
+      return;
+    }
+
+    setUpdatingId(store.id);
     try {
       const updated = await dispatch(
-        moderateStore({ storeId, action: newStatus })
+        moderateStore({ storeId: store.id, action: newStatus, reason })
       ).unwrap();
-      const brandName = updated?.brand || "Store";
-      sonnerToast.success(`Đã cập nhật trạng thái "${brandName}" sang ${newStatus}.`);
+      const brandName = updated?.brand || store.brand || "Store";
+      sonnerToast.success(
+        `Đã cập nhật trạng thái "${brandName}" sang ${newStatus}.`
+      );
     } catch (err) {
       sonnerToast.error(
         typeof err === "string" ? err : "Failed to update store status"
@@ -79,6 +105,15 @@ export default function StoreTable({
     } finally {
       setUpdatingId(null);
     }
+  };
+
+  const confirmRejectStore = async () => {
+    if (!rejectTarget || !rejectionReason.trim()) return;
+    const target = rejectTarget;
+    const trimmedReason = rejectionReason.trim();
+    setRejectTarget(null);
+    setRejectionReason("");
+    await handleStatusChange(target, "REJECTED", trimmedReason);
   };
 
   // HÀM XÓA CỬA HÀNG VĨNH VIỄN
@@ -120,6 +155,7 @@ export default function StoreTable({
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="ACTIVE">Active</SelectItem>
             <SelectItem value="PENDING">Pending</SelectItem>
+            <SelectItem value="REJECTED">Rejected</SelectItem>
             <SelectItem value="BLOCKED">Blocked</SelectItem>
           </SelectContent>
         </Select>
@@ -159,9 +195,7 @@ export default function StoreTable({
                     <TableCell>
                       <Select
                         value={upperStatus}
-                        onValueChange={(val) =>
-                          handleStatusChange(store.id, val)
-                        }
+                        onValueChange={(val) => handleStatusChange(store, val)}
                         disabled={updatingId === store.id}
                       >
                         <SelectTrigger className="w-[120px]">
@@ -169,7 +203,10 @@ export default function StoreTable({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="ACTIVE">Active</SelectItem>
-                          <SelectItem value="PENDING">Pending</SelectItem>
+                          {upperStatus !== "ACTIVE" && (
+                            <SelectItem value="PENDING">Pending</SelectItem>
+                          )}
+                          <SelectItem value="REJECTED">Rejected</SelectItem>
                           <SelectItem value="BLOCKED">Blocked</SelectItem>
                         </SelectContent>
                       </Select>
@@ -194,7 +231,7 @@ export default function StoreTable({
                               onClick={() =>
                                 onActivateStore
                                   ? onActivateStore(store.id)
-                                  : handleStatusChange(store.id, "ACTIVE")
+                                  : handleStatusChange(store, "ACTIVE")
                               }
                             >
                               <CheckCircle className="mr-2 h-4 w-4 text-emerald-600" />
@@ -206,7 +243,7 @@ export default function StoreTable({
                               onClick={() =>
                                 onBlockStore
                                   ? onBlockStore(store.id)
-                                  : handleStatusChange(store.id, "BLOCKED")
+                                  : handleStatusChange(store, "BLOCKED")
                               }
                             >
                               <Ban className="mr-2 h-4 w-4 text-amber-600" />
@@ -231,6 +268,52 @@ export default function StoreTable({
           </Table>
         )}
       </div>
+
+      <Dialog
+        open={Boolean(rejectTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRejectTarget(null);
+            setRejectionReason("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Store Registration</DialogTitle>
+            <DialogDescription>
+              Vui lòng nhập lý do từ chối cửa hàng{" "}
+              <strong>{rejectTarget?.brand}</strong> để chủ cửa hàng cập nhật và
+              gửi duyệt lại.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Nhập lý do từ chối..."
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+            rows={3}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRejectTarget(null);
+                setRejectionReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={!rejectionReason.trim() || updatingId === rejectTarget?.id}
+              onClick={confirmRejectStore}
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              Reject Store
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

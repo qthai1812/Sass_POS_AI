@@ -32,6 +32,7 @@ public class BranchServiceImpl implements BranchService {
     private final OrderRepository orderRepository;
     private final RefundRepository refundRepository;
     private final ShiftReportRepository shiftReportRepository;
+    private final BranchTransferRequestRepository branchTransferRequestRepository;
     private final PlanLimitChecker planLimitChecker;
     private final AccessControlService accessControl;
 
@@ -39,19 +40,16 @@ public class BranchServiceImpl implements BranchService {
         if (user == null || branch == null || branch.getStore() == null) {
             throw new AccessDeniedException("You do not have permission to manage this branch");
         }
-        if (user.getRole() == UserRole.ROLE_ADMIN) {
-            return;
-        }
         Store store = branch.getStore();
         boolean isStoreOwner = store.getStoreAdmin() != null && store.getStoreAdmin().getId().equals(user.getId());
-        boolean isSameStoreManager = user.getStore() != null
+        boolean isSameStoreOwner = user.getStore() != null
                 && user.getStore().getId().equals(store.getId())
-                && (user.getRole() == UserRole.ROLE_STORE_ADMIN || user.getRole() == UserRole.ROLE_STORE_MANAGER);
+                && user.getRole() == UserRole.ROLE_STORE_OWNER;
         boolean isThisBranchManager = user.getBranch() != null
                 && user.getBranch().getId().equals(branch.getId())
                 && user.getRole() == UserRole.ROLE_BRANCH_MANAGER;
 
-        if (!isStoreOwner && !isSameStoreManager && !isThisBranchManager) {
+        if (!isStoreOwner && !isSameStoreOwner && !isThisBranchManager) {
             throw new AccessDeniedException("You do not have permission to manage this branch");
         }
     }
@@ -60,16 +58,13 @@ public class BranchServiceImpl implements BranchService {
         if (user == null || store == null) {
             throw new UserException("You do not have permission to manage branches for this store");
         }
-        if (user.getRole() == UserRole.ROLE_ADMIN) {
-            return;
-        }
         boolean isStoreOwner = store.getStoreAdmin() != null && store.getStoreAdmin().getId().equals(user.getId());
-        boolean isSameStoreManager = user.getStore() != null
+        boolean isSameStoreOwner = user.getStore() != null
                 && user.getStore().getId().equals(store.getId())
-                && (user.getRole() == UserRole.ROLE_STORE_ADMIN || user.getRole() == UserRole.ROLE_STORE_MANAGER);
+                && user.getRole() == UserRole.ROLE_STORE_OWNER;
 
-        if (!isStoreOwner && !isSameStoreManager) {
-            throw new UserException("Only store admin or store manager can create or delete branches");
+        if (!isStoreOwner && !isSameStoreOwner) {
+            throw new UserException("Only store owner can create or delete branches");
         }
     }
 
@@ -151,13 +146,14 @@ public class BranchServiceImpl implements BranchService {
         List<User> branchUsers = userRepository.findByBranchId(id);
         for (User u : branchUsers) {
             u.setBranch(null);
-            if (u.getRole() == UserRole.ROLE_BRANCH_CASHIER || u.getRole() == UserRole.ROLE_BRANCH_MANAGER) {
+            if (u.getRole() == UserRole.ROLE_CASHIER || u.getRole() == UserRole.ROLE_BRANCH_MANAGER) {
                 u.setLoginAccess(false);
             }
             userRepository.save(u);
         }
         existing.setManager(null);
         branchRepository.save(existing);
+        branchTransferRequestRepository.deleteByBranchId(id);
 
         // Clean up or unlink refunds, shift reports, orders, and inventory
         List<Refund> branchRefunds = refundRepository.findByBranchId(id);

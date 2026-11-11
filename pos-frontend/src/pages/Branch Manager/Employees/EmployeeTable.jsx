@@ -9,7 +9,14 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Edit, UserX, UserCheck, Key, BarChart } from "lucide-react";
+import { UserX, UserCheck, Key, BarChart } from "lucide-react";
+
+const ROLE_LABELS = {
+  ROLE_SUPER_ADMIN: "Super Admin",
+  ROLE_STORE_OWNER: "Store Owner",
+  ROLE_BRANCH_MANAGER: "Branch Manager",
+  ROLE_CASHIER: "Cashier",
+};
 
 const EmployeeTable = ({
   employees,
@@ -17,7 +24,6 @@ const EmployeeTable = ({
   handleToggleAccess,
   openResetPasswordDialog,
   openPerformanceDialog,
-  openEditDialog,
 }) => {
   return (
     <Table>
@@ -44,10 +50,24 @@ const EmployeeTable = ({
                     currentUser.email.toLowerCase()));
             const isManagerRole =
               employee.role === "ROLE_BRANCH_MANAGER" ||
-              employee.role === "ROLE_STORE_ADMIN" ||
-              employee.role === "ROLE_STORE_MANAGER" ||
-              employee.role === "ROLE_ADMIN";
-            const cannotDisable = hasAccess && Boolean(isSelf || isManagerRole);
+              employee.role === "ROLE_STORE_OWNER" ||
+              employee.role === "ROLE_SUPER_ADMIN";
+            // Option 3A: Branch Manager chỉ khóa/mở quyền & reset mật khẩu cho Cashier; mọi thao tác trên self/Manager/Owner đều bị khóa.
+            const isProtectedRow = Boolean(isSelf || isManagerRole);
+
+            const accessTooltip = isSelf
+              ? "You cannot modify your own login access"
+              : isManagerRole
+                ? "Only Store Owner can manage Branch Manager or Store Admin access"
+                : hasAccess
+                  ? "Disable Cashier Access"
+                  : "Enable Cashier Access";
+
+            const resetTooltip = isSelf
+              ? "Use Settings to change your own password"
+              : isManagerRole
+                ? "Only Store Owner can reset password for Managers or Admins"
+                : "Reset Cashier Password";
 
             return (
               <TableRow key={employee.id}>
@@ -59,7 +79,11 @@ const EmployeeTable = ({
                     </span>
                   )}
                 </TableCell>
-                <TableCell>{employee.role}</TableCell>
+                <TableCell>
+                  <Badge variant="outline">
+                    {ROLE_LABELS[employee.role] || employee.role}
+                  </Badge>
+                </TableCell>
                 <TableCell>{employee.email}</TableCell>
                 <TableCell>
                   <Badge
@@ -79,20 +103,12 @@ const EmployeeTable = ({
                     <Button
                       variant="ghost"
                       size="icon"
-                      disabled={cannotDisable}
+                      disabled={isProtectedRow}
                       className={
-                        cannotDisable ? "opacity-30 cursor-not-allowed" : ""
+                        isProtectedRow ? "opacity-30 cursor-not-allowed" : ""
                       }
                       onClick={() => handleToggleAccess(employee)}
-                      title={
-                        isSelf
-                          ? "You cannot disable your own login access"
-                          : isManagerRole && hasAccess
-                            ? "Branch Manager access can only be managed by Store Admin"
-                            : hasAccess
-                              ? "Disable Access"
-                              : "Enable Access"
-                      }
+                      title={accessTooltip}
                     >
                       {hasAccess ? (
                         <UserX className="h-4 w-4 text-red-500" />
@@ -103,8 +119,12 @@ const EmployeeTable = ({
                     <Button
                       variant="ghost"
                       size="icon"
+                      disabled={isProtectedRow}
+                      className={
+                        isProtectedRow ? "opacity-30 cursor-not-allowed" : ""
+                      }
                       onClick={() => openResetPasswordDialog(employee)}
-                      title="Reset Password"
+                      title={resetTooltip}
                     >
                       <Key className="h-4 w-4" />
                     </Button>
@@ -115,14 +135,6 @@ const EmployeeTable = ({
                       title="View Performance"
                     >
                       <BarChart className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => openEditDialog(employee)}
-                      title="Edit Employee"
-                    >
-                      <Edit className="h-4 w-4" />
                     </Button>
                   </div>
                 </TableCell>

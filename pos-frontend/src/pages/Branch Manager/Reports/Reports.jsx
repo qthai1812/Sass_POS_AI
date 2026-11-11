@@ -37,6 +37,7 @@ import {
 } from "@/Redux Toolkit/features/branchAnalytics/branchAnalyticsThunks";
 import { useToast } from "@/components/ui/use-toast";
 import AiBusinessCopilotCard from "@/components/ai/AiBusinessCopilotCard";
+import { getLocalIsoDate } from "@/utils/formateDate";
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 
@@ -46,9 +47,7 @@ const Reports = () => {
   const branchId = useSelector((state) => state.branch.branch?.id);
   const { userProfile } = useSelector((state) => state.user);
   const { store } = useSelector((state) => state.store);
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [selectedDate, setSelectedDate] = useState(() => getLocalIsoDate());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const { dailySales, paymentBreakdown, categorySales, topCashiers } =
@@ -143,10 +142,11 @@ const Reports = () => {
       ];
     }
 
-    const csvContent =
-      "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
+    const csvBody = "\uFEFF" + [headers, ...rows].join("\n");
+    const blob = new Blob([csvBody], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodeURI(csvContent));
+    link.setAttribute("href", url);
     link.setAttribute(
       "download",
       `branch_${branchId || 1}_${type}_report_${selectedDate}.csv`,
@@ -154,6 +154,7 @@ const Reports = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
     toast({
       title: "Report Exported",
@@ -182,7 +183,7 @@ const Reports = () => {
             onClick={() => setShowDatePicker((prev) => !prev)}
           >
             <Calendar className="h-4 w-4 mr-1" />
-            {selectedDate === new Date().toISOString().slice(0, 10)
+            {selectedDate === getLocalIsoDate()
               ? "Today"
               : selectedDate}
           </Button>

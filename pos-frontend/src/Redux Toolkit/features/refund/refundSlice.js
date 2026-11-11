@@ -4,6 +4,7 @@ import {
   getAllRefunds,
   getRefundsByCashier,
   getRefundsByBranch,
+  getRefundsByOrder,
   getRefundsByShift,
   getRefundsByCashierAndDateRange,
   getRefundById,
@@ -14,11 +15,24 @@ const initialState = {
   refunds: [],
   refundsByCashier: [],
   refundsByBranch: [],
+  refundsByOrder: [],
+  refundsByOrderId: null,
   refundsByShift: [],
   refundsByDateRange: [],
   selectedRefund: null,
   loading: false,
   error: null,
+};
+
+const upsertRefund = (list, item) => {
+  if (!item) return list || [];
+  const safeList = Array.isArray(list) ? list : [];
+  if (item.id == null) return [...safeList, item];
+  const exists = safeList.some((r) => Number(r?.id) === Number(item.id));
+  if (exists) {
+    return safeList.map((r) => (Number(r?.id) === Number(item.id) ? item : r));
+  }
+  return [...safeList, item];
 };
 
 const refundSlice = createSlice({
@@ -29,6 +43,8 @@ const refundSlice = createSlice({
       state.refunds = [];
       state.refundsByCashier = [];
       state.refundsByBranch = [];
+      state.refundsByOrder = [];
+      state.refundsByOrderId = null;
       state.refundsByShift = [];
       state.refundsByDateRange = [];
       state.selectedRefund = null;
@@ -42,6 +58,10 @@ const refundSlice = createSlice({
     },
     clearRefundsByBranch: (state) => {
       state.refundsByBranch = [];
+    },
+    clearRefundsByOrder: (state) => {
+      state.refundsByOrder = [];
+      state.refundsByOrderId = null;
     },
     clearRefundsByShift: (state) => {
       state.refundsByShift = [];
@@ -59,12 +79,20 @@ const refundSlice = createSlice({
       })
       .addCase(createRefund.fulfilled, (state, action) => {
         state.loading = false;
-        state.refunds.push(action.payload);
-        // Also add to other relevant arrays
-        state.refundsByCashier.push(action.payload);
-        state.refundsByBranch.push(action.payload);
-        if (action.payload.shiftReportId) {
-          state.refundsByShift.push(action.payload);
+        const created = action.payload;
+        state.refunds = upsertRefund(state.refunds, created);
+        state.refundsByCashier = upsertRefund(state.refundsByCashier, created);
+        state.refundsByBranch = upsertRefund(state.refundsByBranch, created);
+        if (
+          created?.orderId != null &&
+          (state.refundsByOrderId == null ||
+            Number(state.refundsByOrderId) === Number(created.orderId))
+        ) {
+          state.refundsByOrderId = created.orderId;
+          state.refundsByOrder = upsertRefund(state.refundsByOrder, created);
+        }
+        if (created?.shiftReportId) {
+          state.refundsByShift = upsertRefund(state.refundsByShift, created);
         }
       })
       .addCase(createRefund.rejected, (state, action) => {
@@ -111,6 +139,18 @@ const refundSlice = createSlice({
       })
       .addCase(getRefundsByBranch.rejected, (state, action) => {
         state.loading = false;
+        state.error = action.payload;
+      })
+
+      // Get Refunds by Order
+      .addCase(getRefundsByOrder.pending, (state) => {
+        state.error = null;
+      })
+      .addCase(getRefundsByOrder.fulfilled, (state, action) => {
+        state.refundsByOrderId = action.payload?.orderId ?? null;
+        state.refundsByOrder = action.payload?.refunds || [];
+      })
+      .addCase(getRefundsByOrder.rejected, (state, action) => {
         state.error = action.payload;
       })
 
@@ -168,6 +208,7 @@ const refundSlice = createSlice({
         state.refunds = (state.refunds || []).filter(keepNotDeleted);
         state.refundsByCashier = (state.refundsByCashier || []).filter(keepNotDeleted);
         state.refundsByBranch = (state.refundsByBranch || []).filter(keepNotDeleted);
+        state.refundsByOrder = (state.refundsByOrder || []).filter(keepNotDeleted);
         state.refundsByShift = (state.refundsByShift || []).filter(keepNotDeleted);
         state.refundsByDateRange = (state.refundsByDateRange || []).filter(keepNotDeleted);
         
@@ -195,6 +236,7 @@ export const {
   clearSelectedRefund, 
   clearRefundsByCashier, 
   clearRefundsByBranch, 
+  clearRefundsByOrder,
   clearRefundsByShift, 
   clearRefundsByDateRange 
 } = refundSlice.actions;

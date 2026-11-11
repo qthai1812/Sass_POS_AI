@@ -118,17 +118,14 @@ public class CategoryServiceImpl implements CategoryService {
         if (user == null || store == null) {
             throw new AccessDeniedException("you don't have permission to manage this category");
         }
-        if (user.getRole() == UserRole.ROLE_ADMIN) {
-            return;
-        }
-        boolean isStoreOwner = user.getRole() == UserRole.ROLE_STORE_ADMIN
+        boolean isStoreOwner = user.getRole() == UserRole.ROLE_STORE_OWNER
                 && store.getStoreAdmin() != null
                 && store.getStoreAdmin().getId().equals(user.getId());
-        boolean isSameStoreManager = (user.getRole() == UserRole.ROLE_STORE_MANAGER || user.getRole() == UserRole.ROLE_STORE_ADMIN)
+        boolean isSameStoreOwner = user.getRole() == UserRole.ROLE_STORE_OWNER
                 && user.getStore() != null
                 && user.getStore().getId().equals(store.getId());
 
-        if (!isStoreOwner && !isSameStoreManager) {
+        if (!isStoreOwner && !isSameStoreOwner) {
             throw new AccessDeniedException("you don't have permission to manage this category");
         }
     }

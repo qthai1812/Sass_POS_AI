@@ -58,19 +58,19 @@ const LayoutContent  = () => {
 
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background print-scroll-reset">
       {/* Hamburger for all screen sizes */}
 
       {/* Sidebar overlay for all screen sizes */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/40"
+          className="fixed inset-0 z-20 bg-black/40 no-print"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       {/* Sidebar */}
       <div
-        className={`fixed z-30 h-full transition-transform duration-200 ${
+        className={`fixed z-30 h-full transition-transform duration-200 no-print ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -82,7 +82,7 @@ const LayoutContent  = () => {
       </div>
       {/* Main Content */}
     
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto print-scroll-reset">
           <Outlet />
         </div>
       

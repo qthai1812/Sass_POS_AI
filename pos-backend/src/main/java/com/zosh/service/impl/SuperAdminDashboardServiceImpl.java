@@ -35,7 +35,7 @@ public class SuperAdminDashboardServiceImpl implements SuperAdminDashboardServic
     private void assertSuperAdmin() {
         try {
             User current = userService.getCurrentUser();
-            if (current == null || current.getRole() != UserRole.ROLE_ADMIN) {
+            if (current == null || current.getRole() != UserRole.ROLE_SUPER_ADMIN) {
                 throw new AccessDeniedException("Super Admin privilege is required");
             }
         } catch (AccessDeniedException ade) {

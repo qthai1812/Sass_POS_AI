@@ -6,7 +6,7 @@ import { PrinterIcon } from 'lucide-react';
 const PrintDialog = ({ isOpen, onClose, onConfirm }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="no-print" overlayClassName="no-print">
         <DialogHeader>
           <DialogTitle>Print Shift Summary</DialogTitle>
         </DialogHeader>

@@ -23,7 +23,7 @@ public class CustomUserImplementation implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
 
         User user = userRepository.findByEmail(username);
-        if(user == null){
+        if (user == null) {
             throw new UsernameNotFoundException("user not found");
         }
 
@@ -32,8 +32,15 @@ public class CustomUserImplementation implements UserDetailsService {
         );
         Collection<GrantedAuthority> authorities =
                 Collections.singletonList(authority);
+        boolean enabled = !Boolean.FALSE.equals(user.getLoginAccess());
         return new org.springframework.security.core.userdetails.User(
-                user.getEmail(), user.getPassword(), authorities
+                user.getEmail(),
+                user.getPassword(),
+                enabled,
+                true,
+                true,
+                true,
+                authorities
         );
     }
 }

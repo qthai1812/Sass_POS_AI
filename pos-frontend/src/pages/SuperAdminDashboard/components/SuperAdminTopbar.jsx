@@ -1,14 +1,11 @@
 import React, { useState } from "react";
-import { useSelector, useDispatch } from "react-redux";
+import { useSelector } from "react-redux";
 import { useNavigate } from "react-router";
 import {
   Bell,
-  User,
   Search,
   Store,
   Clock,
-  Settings,
-  LogOut,
   Menu,
 } from "lucide-react";
 import { Button } from "../../../components/ui/button";
@@ -21,12 +18,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
-import { logout } from "@/Redux Toolkit/features/user/userThunks";
+import UserProfileMenu from "@/components/account/UserProfileMenu";
 
 export default function SuperAdminTopbar({ onOpenMobileMenu }) {
-  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { userProfile } = useSelector((state) => state.user);
   const { dashboardSummary } = useSelector((state) => state.adminDashboard);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -43,11 +38,6 @@ export default function SuperAdminTopbar({ onOpenMobileMenu }) {
       else if (q.includes("dash")) navigate("/super-admin/dashboard");
       else navigate("/super-admin/stores");
     }
-  };
-
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate("/auth/login");
   };
 
   return (
@@ -118,42 +108,7 @@ export default function SuperAdminTopbar({ onOpenMobileMenu }) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <div className="flex items-center gap-3 cursor-pointer">
-                <div className="text-right hidden sm:block">
-                  <p className="text-sm font-medium text-foreground">
-                    {userProfile?.fullName || "Super Admin"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {userProfile?.email || "superadmin@pos.com"}
-                  </p>
-                </div>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                  <User className="w-5 h-5" />
-                </Button>
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Super Admin Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => navigate("/super-admin/settings")}
-                className="cursor-pointer"
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                <span>System Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={handleLogout}
-                className="cursor-pointer text-red-600"
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>Sign Out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <UserProfileMenu />
         </div>
       </div>
     </header>

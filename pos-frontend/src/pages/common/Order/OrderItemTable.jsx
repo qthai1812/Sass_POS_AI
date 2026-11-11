@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "../../../components/ui/table";
+import { getHistoricalUnitPrice } from "../../cashier/return/returnUtils";
 
 const OrderItemTable = ({ selectedOrder }) => {
   return (
@@ -23,12 +24,7 @@ const OrderItemTable = ({ selectedOrder }) => {
         </TableHeader>
         <TableBody>
           {selectedOrder?.items?.map((item, idx) => {
-            const unitPrice =
-              item.product?.sellingPrice ??
-              (item.price && item.quantity
-                ? item.price / item.quantity
-                : item.price) ??
-              0;
+            const unitPrice = getHistoricalUnitPrice(item);
             const lineTotal =
               item.price ?? unitPrice * Number(item.quantity || 1);
 

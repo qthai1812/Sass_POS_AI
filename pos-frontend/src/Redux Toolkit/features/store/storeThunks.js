@@ -288,14 +288,17 @@ export const addEmployee = createAsyncThunk(
 // 🔹 Moderate store (approve/block/reject)
 export const moderateStore = createAsyncThunk(
   "store/moderateStore",
-  async ({ storeId, action }, { rejectWithValue }) => {
+  async ({ storeId, action, reason }, { rejectWithValue }) => {
     try {
-      console.log("🔄 Moderating store...", { storeId, action });
+      console.log("🔄 Moderating store...", { storeId, action, reason });
       const headers = getAuthHeaders();
-      // ✅ Fixed: backend uses @RequestParam StoreStatus status — key must be "status" not "action"
+      const params = { status: action };
+      if (reason && String(reason).trim()) {
+        params.reason = String(reason).trim();
+      }
       const res = await api.put(`/api/stores/${storeId}/moderate`, null, {
         headers,
-        params: { status: action },
+        params,
       });
       console.log("✅ Store moderated successfully:", {
         storeId: res.data.id,

@@ -5,6 +5,7 @@ import com.zosh.payload.response.ApiResponse;
 import com.zosh.service.InventoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,6 +18,7 @@ public class InventoryController {
 
     private final InventoryService inventoryService;
 
+    @PreAuthorize("hasRole('BRANCH_MANAGER')")
     @PostMapping
     public ResponseEntity<InventoryDTO> create(
             @RequestBody InventoryDTO inventoryDTO
@@ -24,6 +26,7 @@ public class InventoryController {
         return ResponseEntity.ok(inventoryService.createInventory(inventoryDTO));
     }
 
+    @PreAuthorize("hasRole('BRANCH_MANAGER')")
     @PutMapping("/{id}")
     public ResponseEntity<InventoryDTO> update(
             @RequestBody InventoryDTO inventoryDTO,
@@ -32,6 +35,7 @@ public class InventoryController {
         return ResponseEntity.ok(inventoryService.updateInventory(id, inventoryDTO));
     }
 
+    @PreAuthorize("hasRole('BRANCH_MANAGER')")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse> delete(
             @PathVariable Long id
@@ -42,6 +46,7 @@ public class InventoryController {
         return ResponseEntity.ok(apiResponse);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/{id}")
     public ResponseEntity<InventoryDTO> getInventoryById(
             @PathVariable Long id
@@ -49,6 +54,7 @@ public class InventoryController {
         return ResponseEntity.ok(inventoryService.getInventoryById(id));
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/branch/{branchId}/product/{productId}")
     public ResponseEntity<InventoryDTO> getInventoryByProductAndBranchId(
             @PathVariable Long branchId,
@@ -58,6 +64,7 @@ public class InventoryController {
                 .getInventoryByProductIdAndBranchId(productId, branchId));
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/product/{productId}")
     public ResponseEntity<List<InventoryDTO>> getInventoryByProduct(
             @PathVariable Long productId
@@ -65,6 +72,7 @@ public class InventoryController {
         return ResponseEntity.ok(inventoryService.getInventoryByProductId(productId));
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/branch/{branchId}")
     public ResponseEntity<List<InventoryDTO>> getInventoryByBranch(
             @PathVariable Long branchId
@@ -72,6 +80,7 @@ public class InventoryController {
         return ResponseEntity.ok(inventoryService.getAllInventoryByBranchId(branchId));
     }
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @PostMapping("/transfer")
     public ResponseEntity<ApiResponse> transferInventory(
             @RequestParam(required = false) Long productId,

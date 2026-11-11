@@ -1,19 +1,57 @@
 import React from "react";
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2, Mail, Phone, MapPin, UserX, UserCheck } from "lucide-react";
+import {
+  Edit,
+  Trash2,
+  Mail,
+  Phone,
+  MapPin,
+  UserX,
+  UserCheck,
+  Key,
+} from "lucide-react";
+
+const ROLE_META = {
+  ROLE_SUPER_ADMIN: {
+    label: "Super Admin",
+    className: "bg-purple-100 text-purple-800 border-purple-300",
+  },
+  ROLE_STORE_OWNER: {
+    label: "Chủ chuỗi (Store Owner)",
+    className: "bg-blue-100 text-blue-800 border-blue-300",
+  },
+  ROLE_BRANCH_MANAGER: {
+    label: "Quản lý chi nhánh",
+    className: "bg-amber-100 text-amber-800 border-amber-300",
+  },
+  ROLE_CASHIER: {
+    label: "Thu ngân",
+    className: "bg-slate-100 text-slate-800 border-slate-300",
+  },
+};
 
 const EmployeeTable = ({
   employees,
   currentUser,
   branches,
   onToggleAccess,
+  onResetPassword,
   onEdit,
   onDelete,
 }) => {
   if (!employees || employees.length === 0) {
-    return <div className="text-center py-8 text-gray-500">No employees found.</div>;
+    return (
+      <div className="text-center py-8 text-gray-500">No employees found.</div>
+    );
   }
 
   const getBranchName = (employee) => {
@@ -47,9 +85,14 @@ const EmployeeTable = ({
                   employee.email.toLowerCase() ===
                     currentUser.email.toLowerCase()));
             const isStoreAdmin =
-              employee.role === "ROLE_STORE_ADMIN" ||
-              employee.role === "ROLE_ADMIN";
+              employee.role === "ROLE_STORE_OWNER" ||
+              employee.role === "ROLE_SUPER_ADMIN";
             const cannotDisable = hasAccess && Boolean(isSelf || isStoreAdmin);
+            const cannotResetOrDelete = Boolean(isSelf || isStoreAdmin);
+            const roleMeta = ROLE_META[employee.role] || {
+              label: employee.role,
+              className: "",
+            };
 
             return (
               <TableRow key={employee.id}>
@@ -71,7 +114,11 @@ const EmployeeTable = ({
                     <span>{employee.phone}</span>
                   </div>
                 </TableCell>
-                <TableCell>{employee.role}</TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={roleMeta.className}>
+                    {roleMeta.label}
+                  </Badge>
+                </TableCell>
                 <TableCell>
                   <div className="flex items-center space-x-2">
                     <MapPin className="h-4 w-4 text-gray-500" />
@@ -103,9 +150,11 @@ const EmployeeTable = ({
                       title={
                         isSelf
                           ? "You cannot disable your own login access"
-                          : hasAccess
-                            ? "Disable Access"
-                            : "Enable Access"
+                          : isStoreAdmin && hasAccess
+                            ? "Protected Store Owner account"
+                            : hasAccess
+                              ? "Disable Access"
+                              : "Enable Access"
                       }
                     >
                       {hasAccess ? (
@@ -115,20 +164,50 @@ const EmployeeTable = ({
                       )}
                     </Button>
                   )}
+                  {onResetPassword && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={cannotResetOrDelete}
+                      className={
+                        cannotResetOrDelete
+                          ? "opacity-30 cursor-not-allowed"
+                          : ""
+                      }
+                      onClick={() => onResetPassword(employee)}
+                      title={
+                        isSelf
+                          ? "Use Settings to change your own password"
+                          : isStoreAdmin
+                            ? "Protected Store Owner account"
+                            : "Reset Password"
+                      }
+                    >
+                      <Key className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => onEdit(employee)}
+                    title="Edit Employee"
                   >
                     <Edit className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={Boolean(isSelf || isStoreAdmin)}
+                    disabled={cannotResetOrDelete}
                     onClick={() => onDelete(employee.id)}
+                    title={
+                      isSelf
+                        ? "You cannot delete your own account"
+                        : isStoreAdmin
+                          ? "Protected Store Owner account"
+                          : "Delete Employee"
+                    }
                     className={
-                      isSelf || isStoreAdmin
+                      cannotResetOrDelete
                         ? "text-gray-300 cursor-not-allowed"
                         : "text-red-600 hover:text-red-800"
                     }

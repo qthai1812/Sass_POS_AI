@@ -5,6 +5,7 @@ import com.zosh.payload.response.ApiResponse;
 import com.zosh.service.CategoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,6 +17,7 @@ public class CategoryController {
 
     private final CategoryService categoryService;
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @PostMapping
     public ResponseEntity<CategoryDTO> createCategory(
             @RequestBody CategoryDTO categoryDTO) throws Exception {
@@ -24,6 +26,7 @@ public class CategoryController {
         );
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/store/{storeId}")
     public ResponseEntity<List<CategoryDTO>> getCategoriesByStoreId(
             @PathVariable Long storeId) throws Exception {
@@ -32,6 +35,7 @@ public class CategoryController {
         );
     }
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @PutMapping("/{id}")
     public ResponseEntity<CategoryDTO> updateCategory(
             @RequestBody CategoryDTO categoryDTO,
@@ -42,6 +46,7 @@ public class CategoryController {
     }
 
     // ✅ Fixed: was incorrectly calling updateCategory instead of deleteCategory
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse> deleteCategory(
             @PathVariable Long id) throws Exception {

@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle, XCircle, Eye, Clock } from "lucide-react";
 
 import { useToast } from "@/components/ui/use-toast";
-import { getAllStores, moderateStore, updateStore } from "@/Redux Toolkit/features/store/storeThunks";
+import { getAllStores, moderateStore } from "@/Redux Toolkit/features/store/storeThunks";
 import { formatDateTime } from "@/utils/formateDate";
 
 export default function PendingRequestsPage() {
@@ -65,7 +65,7 @@ export default function PendingRequestsPage() {
       } catch (e) {
         toast({
           title: "Approval Failed",
-          description: e?.message || "Failed to approve store.",
+          description: (typeof e === "string" ? e : e?.message) || "Failed to approve store.",
           variant: "destructive",
         });
       } finally {
@@ -81,14 +81,12 @@ export default function PendingRequestsPage() {
       setUpdatingId(selectedRequest.id);
       try {
         await dispatch(
-          updateStore({
-            id: selectedRequest.id,
-            storeData: {
-              description: `[Lý do từ chối]: ${rejectionReason.trim()}`,
-            },
-          })
+          moderateStore({
+            storeId: selectedRequest.id,
+            action: "REJECTED",
+            reason: rejectionReason.trim(),
+          }),
         ).unwrap();
-        await dispatch(moderateStore({ storeId: selectedRequest.id, action: "BLOCKED" })).unwrap();
         toast({
           title: "Store Rejected",
           description: `${selectedRequest.brand} has been rejected.`,
@@ -96,7 +94,7 @@ export default function PendingRequestsPage() {
       } catch (e) {
         toast({
           title: "Rejection Failed",
-          description: e?.message || "Failed to reject store.",
+          description: (typeof e === "string" ? e : e?.message) || "Failed to reject store.",
           variant: "destructive",
         });
       } finally {

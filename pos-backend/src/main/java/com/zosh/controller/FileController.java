@@ -6,6 +6,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -20,6 +21,7 @@ public class FileController {
 
     private final FileService fileService;
 
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'STORE_OWNER', 'BRANCH_MANAGER')")
     @PostMapping("/upload")
     public ResponseEntity<Map<String, String>> uploadMedia(@RequestParam("file") MultipartFile file) throws IOException {
         String fileUrl = fileService.uploadFile(file);

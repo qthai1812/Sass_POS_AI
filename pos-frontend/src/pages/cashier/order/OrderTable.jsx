@@ -35,7 +35,9 @@ const OrderTable = ({
         {orders.map((order) => {
           const statusUpper = String(order.status || "COMPLETED").toUpperCase();
           const isNonReturnable =
-            statusUpper === "REFUNDED" || statusUpper === "CANCELLED";
+            statusUpper === "REFUNDED" ||
+            statusUpper === "CANCELLED" ||
+            statusUpper === "PENDING";
 
           return (
             <TableRow key={order.id}>

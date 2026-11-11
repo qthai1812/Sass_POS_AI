@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Loader2,
   Lock,
+  ArrowRightLeft,
 } from "lucide-react";
 
 export default function AiBusinessCopilotCard({
@@ -151,7 +152,9 @@ export default function AiBusinessCopilotCard({
             AI Business & Inventory Copilot
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Phân tích nguyên nhân tăng/giảm doanh thu, cảnh báo hoàn trả bất thường, dự báo nhập hàng & gợi ý mã khuyến mãi
+            {mode === "BRANCH"
+              ? "Phân tích nguyên nhân tăng/giảm doanh thu, cảnh báo hoàn trả bất thường & dự báo nhập hàng chi nhánh"
+              : "Phân tích nguyên nhân tăng/giảm doanh thu, cảnh báo hoàn trả bất thường, điều phối kho & gợi ý mã khuyến mãi"}
           </p>
         </div>
         <Button onClick={handleAnalyze} disabled={loading} className="gap-2">
@@ -241,7 +244,7 @@ export default function AiBusinessCopilotCard({
                         Đề xuất nhập thêm: +{item.suggestedRestockQty} SP
                       </p>
                     </div>
-                    {(branchId || item.branchId) && (
+                    {mode === "BRANCH" && (branchId || item.branchId) && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -253,13 +256,25 @@ export default function AiBusinessCopilotCard({
                           : `+${item.suggestedRestockQty} Kho`}
                       </Button>
                     )}
+                    {mode === "STORE" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={() => navigate("/store/alerts")}
+                        title="Mở trang Cảnh báo & Điều phối tồn kho liên chi nhánh"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                        Điều phối kho
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {insights.couponSuggestions?.length > 0 && (
+          {mode === "STORE" && insights.couponSuggestions?.length > 0 && (
             <div className="space-y-2.5">
               <h4 className="text-sm font-bold flex items-center gap-1.5">
                 <TicketPercent className="w-4 h-4 text-purple-600" />

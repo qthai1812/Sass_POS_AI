@@ -1,10 +1,12 @@
 package com.zosh.service.impl;
 
 import com.zosh.domain.PlanFeature;
+import com.zosh.domain.UserRole;
 import com.zosh.mapper.InventoryMapper;
 import com.zosh.modal.Branch;
 import com.zosh.modal.Inventory;
 import com.zosh.modal.Product;
+import com.zosh.modal.User;
 import com.zosh.payload.dto.InventoryDTO;
 import com.zosh.repository.BranchRepository;
 import com.zosh.repository.InventoryRepository;
@@ -14,6 +16,7 @@ import com.zosh.service.InventoryService;
 import com.zosh.service.PlanLimitChecker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,7 +51,11 @@ public class InventoryServiceImpl implements InventoryService {
         Branch branch = branchRepository.findById(inventoryDTO.getBranchId()).orElseThrow(
                 () -> new Exception("Branch not found with id: " + inventoryDTO.getBranchId())
         );
-        accessControl.assertCanManageBranch(accessControl.currentUser(), branch);
+        User currentUser = accessControl.currentUser();
+        if (currentUser == null || currentUser.getRole() != UserRole.ROLE_BRANCH_MANAGER) {
+            throw new AccessDeniedException("Chỉ Quản lý chi nhánh (Branch Manager) mới có quyền thêm hoặc điều chỉnh tồn kho chi nhánh");
+        }
+        accessControl.assertCanManageBranch(currentUser, branch);
         planLimitChecker.requireFeature(branch.getStore(), PlanFeature.INVENTORY);
         Product product = productRepository.findById(inventoryDTO.getProductId()).orElseThrow(
                 () -> new Exception("Product not found with id: " + inventoryDTO.getProductId())
@@ -109,7 +116,11 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory inventory = inventoryRepository.findById(id).orElseThrow(
                 () -> new Exception("Inventory not found with id: " + id)
         );
-        accessControl.assertCanManageBranch(accessControl.currentUser(), inventory.getBranch());
+        User currentUser = accessControl.currentUser();
+        if (currentUser == null || currentUser.getRole() != UserRole.ROLE_BRANCH_MANAGER) {
+            throw new AccessDeniedException("Chỉ Quản lý chi nhánh (Branch Manager) mới có quyền cập nhật tồn kho chi nhánh");
+        }
+        accessControl.assertCanManageBranch(currentUser, inventory.getBranch());
         planLimitChecker.requireFeature(inventory.getBranch().getStore(), PlanFeature.INVENTORY);
         inventory.setQuantity(inventoryDTO.getQuantity());
         if (inventoryDTO.getMinStockLevel() != null && inventoryDTO.getMinStockLevel() >= 0) {
@@ -125,7 +136,11 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory inventory = inventoryRepository.findById(id).orElseThrow(
                 () -> new Exception("Inventory not found with id: " + id)
         );
-        accessControl.assertCanManageBranch(accessControl.currentUser(), inventory.getBranch());
+        User currentUser = accessControl.currentUser();
+        if (currentUser == null || currentUser.getRole() != UserRole.ROLE_BRANCH_MANAGER) {
+            throw new AccessDeniedException("Chỉ Quản lý chi nhánh (Branch Manager) mới có quyền xóa tồn kho chi nhánh");
+        }
+        accessControl.assertCanManageBranch(currentUser, inventory.getBranch());
         planLimitChecker.requireFeature(inventory.getBranch().getStore(), PlanFeature.INVENTORY);
         inventoryRepository.delete(inventory);
     }
@@ -237,7 +252,23 @@ public class InventoryServiceImpl implements InventoryService {
                 .findAllByProductIdAndBranchIdWithLock(productId, branchId);
 
         if (locked.isEmpty()) {
-            throw new Exception("Inventory not found for product " + productId + " in branch " + branchId);
+            Branch branch = branchRepository.findById(branchId)
+                    .orElseThrow(() -> new Exception("Branch not found with id: " + branchId));
+            Product product = productRepository.findById(productId).orElse(null);
+            if (product == null) {
+                log.warn("Skipped restoring inventory for deleted product {} in branch {}", productId, branchId);
+                return;
+            }
+            Inventory created = Inventory.builder()
+                    .branch(branch)
+                    .product(product)
+                    .quantity(quantity)
+                    .minStockLevel(10)
+                    .build();
+            inventoryRepository.save(created);
+            log.info("Created inventory row and restored {} units for product {} in branch {}",
+                    quantity, productId, branchId);
+            return;
         }
 
         Inventory keeper = locked.get(0);
@@ -273,8 +304,11 @@ public class InventoryServiceImpl implements InventoryService {
             throw new IllegalArgumentException("Hai chi nhánh không thuộc cùng một cửa hàng");
         }
 
-        com.zosh.modal.User currentUser = accessControl.currentUser();
-        accessControl.assertCanManageBranch(currentUser, sourceBranch);
+        User currentUser = accessControl.currentUser();
+        if (currentUser == null || currentUser.getRole() != UserRole.ROLE_STORE_OWNER) {
+            throw new AccessDeniedException("Chỉ Chủ cửa hàng (Store Owner) mới có quyền điều chuyển tồn kho giữa các chi nhánh");
+        }
+        accessControl.assertStoreLevelOrAdmin(currentUser, sourceBranch.getStore());
         planLimitChecker.requireFeature(sourceBranch.getStore(), PlanFeature.INVENTORY);
         planLimitChecker.requireFeature(sourceBranch.getStore(), PlanFeature.MULTI_LOCATION);
 

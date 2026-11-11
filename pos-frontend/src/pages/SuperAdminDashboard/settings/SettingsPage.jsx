@@ -21,9 +21,22 @@ const SettingsTabTrigger = ({ value, children }) => (
   </TabsTrigger>
 );
 
+const VALID_TABS = new Set([
+  "payment",
+  "profile",
+  "security",
+  "notifications",
+  "system",
+]);
+
 export default function SettingsPage() {
-  const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get("tab") || "payment";
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab") || "payment";
+  const activeTab = VALID_TABS.has(rawTab) ? rawTab : "payment";
+
+  const handleTabChange = (nextTab) => {
+    setSearchParams({ tab: nextTab });
+  };
 
   const {
     profileData,
@@ -57,7 +70,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <Tabs defaultValue={initialTab} className="space-y-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
         <TabsList className="grid w-full grid-cols-5">
           <SettingsTabTrigger value="payment">
             <CreditCard className="w-4 h-4 text-emerald-500" />

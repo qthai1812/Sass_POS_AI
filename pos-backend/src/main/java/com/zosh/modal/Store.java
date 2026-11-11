@@ -35,6 +35,9 @@ public class Store {
     @Enumerated(EnumType.STRING)
     private StoreStatus status;
 
+    @Column(length = 500)
+    private String rejectionReason;
+
     private Double commissionRate = 2.5;
 
     private String currency = "VND";

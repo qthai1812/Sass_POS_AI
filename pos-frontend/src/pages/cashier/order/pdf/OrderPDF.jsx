@@ -1,6 +1,7 @@
 import { formatDate, getPaymentModeLabel } from "../data";
 import { styles } from "./pdfStyles";
 import { Document, Page, Text, View, Image } from "@react-pdf/renderer";
+import { getHistoricalUnitPrice } from "../../return/returnUtils";
 
 // Built-in Helvetica supports WinAnsi/Latin-1; normalize Vietnamese diacritics so offline PDF rendering never garbles glyphs
 const toSafePdfText = (input) => {
@@ -20,10 +21,7 @@ export const OrderPDF = ({ order, branding }) => {
   const items = order?.items || [];
   const computedSubTotal = items.reduce((sum, item) => {
     const qty = Number(item.quantity || 1);
-    const unitPrice =
-      item.product?.sellingPrice ??
-      (item.price && qty ? item.price / qty : item.price) ??
-      0;
+    const unitPrice = getHistoricalUnitPrice(item);
     const lineTotal = item.price ?? unitPrice * qty;
     return sum + Number(lineTotal || 0);
   }, 0);
@@ -134,10 +132,7 @@ export const OrderPDF = ({ order, branding }) => {
             </View>
             {items.map((item, index) => {
               const qty = Number(item.quantity || 1);
-              const unitPrice =
-                item.product?.sellingPrice ??
-                (item.price && qty ? item.price / qty : item.price) ??
-                0;
+              const unitPrice = getHistoricalUnitPrice(item);
               const lineTotal = item.price ?? unitPrice * qty;
               const rawName =
                 item.productName || item.product?.name || "Product";

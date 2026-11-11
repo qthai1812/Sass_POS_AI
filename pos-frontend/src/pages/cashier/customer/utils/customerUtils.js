@@ -24,7 +24,7 @@ export const calculateCustomerStats = (orders) => {
 
   const validOrders = orders.filter(
     (order) =>
-      !["CANCELLED", "REFUNDED"].includes(
+      !["CANCELLED", "REFUNDED", "PENDING"].includes(
         String(order?.status || "").toUpperCase(),
       ),
   );

@@ -10,6 +10,7 @@ import com.zosh.repository.StoreRepository;
 import com.zosh.service.CouponService;
 import com.zosh.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,9 +42,8 @@ public class CouponServiceImpl implements CouponService {
 
     private void validateCouponStoreReadAccess(Store store) throws Exception {
         User user = userService.getCurrentUser();
-        if (user.getRole() == UserRole.ROLE_ADMIN) return;
-        if (store == null) {
-            throw new Exception("You do not have permission to view coupons for this store");
+        if (user == null || store == null) {
+            throw new AccessDeniedException("You do not have permission to view coupons for this store");
         }
         boolean isOwner = store.getStoreAdmin() != null && store.getStoreAdmin().getId().equals(user.getId());
         boolean isStoreUser = user.getStore() != null && user.getStore().getId().equals(store.getId());
@@ -51,7 +51,7 @@ public class CouponServiceImpl implements CouponService {
                 && user.getBranch().getStore() != null
                 && user.getBranch().getStore().getId().equals(store.getId());
         if (!isOwner && !isStoreUser && !isBranchUser) {
-            throw new Exception("You do not have permission to view coupons for this store");
+            throw new AccessDeniedException("You do not have permission to view coupons for this store");
         }
     }
 
@@ -115,30 +115,35 @@ public class CouponServiceImpl implements CouponService {
 
     private void validateCouponStoreAccess(Store store) throws Exception {
         User user = userService.getCurrentUser();
-        if (user.getRole() == UserRole.ROLE_ADMIN) return;
-        if (store == null) {
-            throw new Exception("You do not have permission to manage coupons for this store");
+        if (user == null || store == null) {
+            throw new AccessDeniedException("You do not have permission to manage coupons for this store");
         }
         boolean isOwner = store.getStoreAdmin() != null && store.getStoreAdmin().getId().equals(user.getId());
         boolean isManager = user.getStore() != null && user.getStore().getId().equals(store.getId())
-                && (user.getRole() == UserRole.ROLE_STORE_ADMIN || user.getRole() == UserRole.ROLE_STORE_MANAGER);
+                && user.getRole() == UserRole.ROLE_STORE_OWNER;
         if (!isOwner && !isManager) {
-            throw new Exception("You do not have permission to manage coupons for this store");
+            throw new AccessDeniedException("You do not have permission to manage coupons for this store");
         }
     }
 
-    private void validateCouponValues(String code, String discountType, Double discountValue) throws Exception {
+    private void validateCouponValues(String code, String discountType, Double discountValue, Double minOrderValue) throws Exception {
         if (code == null || code.trim().isEmpty()) {
             throw new IllegalArgumentException("Coupon code is required");
         }
         if (code.trim().toUpperCase().startsWith("POINTS")) {
             throw new IllegalArgumentException("Coupon code 'POINTS' is reserved for loyalty point redemption");
         }
+        if (discountType == null || (!"PERCENTAGE".equalsIgnoreCase(discountType.trim()) && !"FLAT".equalsIgnoreCase(discountType.trim()))) {
+            throw new IllegalArgumentException("Discount type must be PERCENTAGE or FLAT");
+        }
         if (discountValue == null || discountValue <= 0) {
             throw new IllegalArgumentException("Discount value must be greater than 0");
         }
-        if ("PERCENTAGE".equalsIgnoreCase(discountType) && discountValue > 100) {
+        if ("PERCENTAGE".equalsIgnoreCase(discountType.trim()) && discountValue > 100) {
             throw new IllegalArgumentException("Percentage discount cannot exceed 100%");
+        }
+        if (minOrderValue != null && minOrderValue < 0) {
+            throw new IllegalArgumentException("Minimum order value cannot be negative");
         }
     }
 
@@ -151,7 +156,7 @@ public class CouponServiceImpl implements CouponService {
         Store store = storeRepository.findById(dto.getStoreId())
                 .orElseThrow(() -> new Exception("Store not found"));
         validateCouponStoreAccess(store);
-        validateCouponValues(dto.getCode(), dto.getDiscountType(), dto.getDiscountValue());
+        validateCouponValues(dto.getCode(), dto.getDiscountType(), dto.getDiscountValue(), dto.getMinOrderValue());
         if (dto.getValidFrom() != null && dto.getValidUntil() != null
                 && dto.getValidFrom().isAfter(dto.getValidUntil())) {
             throw new IllegalArgumentException("Valid-from date must be before valid-until date");
@@ -164,7 +169,7 @@ public class CouponServiceImpl implements CouponService {
 
         Coupon coupon = Coupon.builder()
                 .code(normalizedCode)
-                .discountType(dto.getDiscountType())
+                .discountType(dto.getDiscountType().trim().toUpperCase())
                 .discountValue(dto.getDiscountValue())
                 .minOrderValue(dto.getMinOrderValue())
                 .validFrom(dto.getValidFrom())
@@ -190,18 +195,18 @@ public class CouponServiceImpl implements CouponService {
             }
             coupon.setCode(normalized);
         }
-        if (dto.getDiscountType() != null) coupon.setDiscountType(dto.getDiscountType());
+        if (dto.getDiscountType() != null) coupon.setDiscountType(dto.getDiscountType().trim().toUpperCase());
         if (dto.getDiscountValue() != null) coupon.setDiscountValue(dto.getDiscountValue());
-        validateCouponValues(coupon.getCode(), coupon.getDiscountType(), coupon.getDiscountValue());
-        if (dto.getValidFrom() != null && dto.getValidUntil() != null
-                && dto.getValidFrom().isAfter(dto.getValidUntil())) {
-            throw new IllegalArgumentException("Valid-from date must be before valid-until date");
-        }
-
         if (dto.getMinOrderValue() != null) coupon.setMinOrderValue(dto.getMinOrderValue());
         if (dto.getValidFrom() != null) coupon.setValidFrom(dto.getValidFrom());
         if (dto.getValidUntil() != null) coupon.setValidUntil(dto.getValidUntil());
         if (dto.getIsActive() != null) coupon.setIsActive(dto.getIsActive());
+
+        validateCouponValues(coupon.getCode(), coupon.getDiscountType(), coupon.getDiscountValue(), coupon.getMinOrderValue());
+        if (coupon.getValidFrom() != null && coupon.getValidUntil() != null
+                && coupon.getValidFrom().isAfter(coupon.getValidUntil())) {
+            throw new IllegalArgumentException("Valid-from date must be before valid-until date");
+        }
 
         return mapToDto(couponRepository.save(coupon));
     }

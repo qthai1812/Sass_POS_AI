@@ -29,8 +29,8 @@ export default function usePlanEntitlements() {
 
   const hasFeature = useCallback(
     (key) => {
-      if (!valid) return true;
-      return entitlements.features?.[key] !== false;
+      if (!valid) return false;
+      return Boolean(entitlements.features?.[key]);
     },
     [valid, entitlements],
   );

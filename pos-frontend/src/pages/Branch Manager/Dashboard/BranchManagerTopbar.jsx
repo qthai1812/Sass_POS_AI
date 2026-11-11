@@ -1,15 +1,7 @@
-import React from "react";
-import { useSelector, useDispatch } from "react-redux";
+import React, { useEffect, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router";
-import {
-  Bell,
-  User,
-  Package,
-  ShoppingBag,
-  Settings,
-  LogOut,
-  Menu,
-} from "lucide-react";
+import { Bell, Package, ShoppingBag, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -21,18 +13,42 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { logout } from "@/Redux Toolkit/features/user/userThunks";
+import UserProfileMenu from "@/components/account/UserProfileMenu";
+import { getTodayOverview } from "@/Redux Toolkit/features/branchAnalytics/branchAnalyticsThunks";
 
 export default function BranchManagerTopbar({ onOpenMobileMenu }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { userProfile } = useSelector((state) => state.user);
   const { branch } = useSelector((state) => state.branch);
+  const { userProfile } = useSelector((state) => state.user);
+  const { todayOverview } = useSelector((state) => state.branchAnalytics);
+  const { inventories = [] } = useSelector((state) => state.inventory || {});
+  const fetchedBranchIdRef = useRef(null);
 
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate("/auth/login");
-  };
+  const branchId = branch?.id || userProfile?.branchId;
+
+  useEffect(() => {
+    if (
+      branchId &&
+      !todayOverview &&
+      fetchedBranchIdRef.current !== branchId
+    ) {
+      fetchedBranchIdRef.current = branchId;
+      dispatch(getTodayOverview(branchId));
+    }
+  }, [dispatch, branchId, todayOverview]);
+
+  const lowStockCount =
+    todayOverview?.lowStockItems !== undefined &&
+    todayOverview?.lowStockItems !== null
+      ? Number(todayOverview.lowStockItems)
+      : Array.isArray(inventories)
+        ? inventories.filter(
+            (item) =>
+              Number(item?.quantity ?? 0) <=
+              Number(item?.minStockLevel ?? item?.minStock ?? 5),
+          ).length
+        : 0;
 
   return (
     <header className="bg-background border-b px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3 shrink-0">
@@ -75,9 +91,11 @@ export default function BranchManagerTopbar({ onOpenMobileMenu }) {
               aria-label="Notifications"
             >
               <Bell className="h-5 w-5" />
-              <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
-                3
-              </Badge>
+              {lowStockCount > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-5 min-w-[20px] flex items-center justify-center px-1 text-xs">
+                  {lowStockCount}
+                </Badge>
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72">
@@ -88,7 +106,11 @@ export default function BranchManagerTopbar({ onOpenMobileMenu }) {
               className="cursor-pointer"
             >
               <Package className="mr-2 h-4 w-4 text-amber-500" />
-              <span>Check low stock inventory items</span>
+              <span>
+                {lowStockCount > 0
+                  ? `${lowStockCount} low stock inventory items`
+                  : "Inventory levels healthy (0 low stock)"}
+              </span>
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => navigate("/branch/orders")}
@@ -100,42 +122,7 @@ export default function BranchManagerTopbar({ onOpenMobileMenu }) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <div className="flex items-center gap-2.5 cursor-pointer">
-              <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <User className="h-5 w-5 text-primary" />
-              </div>
-              <div className="hidden md:block text-left max-w-[180px]">
-                <p className="text-sm font-medium text-foreground truncate">
-                  {userProfile?.fullName || "Branch Manager"}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {userProfile?.email || "manager@pos.com"}
-                </p>
-              </div>
-            </div>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => navigate("/branch/settings")}
-              className="cursor-pointer"
-            >
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Branch Settings</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleLogout}
-              className="cursor-pointer text-red-600"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              <span>Logout</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <UserProfileMenu />
       </div>
     </header>
   );

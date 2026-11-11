@@ -7,6 +7,7 @@ import com.zosh.payload.response.ApiResponse;
 import com.zosh.service.EmployeeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,6 +19,7 @@ public class EmployeeController {
 
     private final EmployeeService employeeService;
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @PostMapping("/store/{storeId}")
     public ResponseEntity<UserDto> createStoreEmployee(
             @PathVariable Long storeId,
@@ -26,6 +28,7 @@ public class EmployeeController {
         return ResponseEntity.ok(employee);
     }
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @PostMapping("/branch/{branchId}")
     public ResponseEntity<UserDto> createBranchEmployee(
             @PathVariable Long branchId,
@@ -36,6 +39,7 @@ public class EmployeeController {
 
 
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse> deleteEmployee(
             @PathVariable Long id) throws Exception {
@@ -45,11 +49,14 @@ public class EmployeeController {
         return ResponseEntity.ok(apiResponse);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER')")
     @GetMapping("/{id}")
     public ResponseEntity<UserDto> findEmployeeById(
             @PathVariable Long id) throws Exception {
         return ResponseEntity.ok(employeeService.findEmployeeById(id));
     }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER')")
     @PutMapping("/{id}")
     public ResponseEntity<UserDto> updateEmployee(
             @PathVariable Long id,
@@ -57,6 +64,7 @@ public class EmployeeController {
         return ResponseEntity.ok(employeeService.updateEmployeeDto(id, userDto));
     }
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @GetMapping("/store/{id}")
     public ResponseEntity<List<UserDto>> storeEmployee(
             @PathVariable Long id,
@@ -67,6 +75,7 @@ public class EmployeeController {
         return ResponseEntity.ok(employee);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER')")
     @GetMapping("/branch/{id}")
     public ResponseEntity<List<UserDto>> branchEmployee(
             @PathVariable Long id,

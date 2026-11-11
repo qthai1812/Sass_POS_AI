@@ -10,25 +10,28 @@ import com.zosh.payload.dto.OrderDTO;
 import com.zosh.payload.dto.OrderItemDTO;
 import com.zosh.repository.*;
 import com.zosh.service.AccessControlService;
-import com.zosh.service.InventoryService;
 import com.zosh.service.OrderService;
+import com.zosh.service.PaymentGatewayService;
+import com.zosh.service.PaymentGatewayService.PaymentSessionDTO;
 import com.zosh.service.UserService;
+import com.zosh.service.order.CustomerLoyaltyService;
+import com.zosh.service.order.OrderInventoryCoordinator;
+import com.zosh.service.order.OrderPricingCalculator;
+import com.zosh.service.order.OrderPricingCalculator.DiscountResult;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -39,382 +42,263 @@ public class OrderServiceImpl implements OrderService {
     private final UserService userService;
     private final ProductRepository productRepository;
     private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
     private final BranchRepository branchRepository;
-    private final CouponRepository couponRepository;
     private final CustomerRepository customerRepository;
-    private final InventoryService inventoryService;
     private final RefundRepository refundRepository;
     private final ShiftReportRepository shiftReportRepository;
     private final AccessControlService accessControl;
-    private final com.zosh.service.PaymentGatewayService paymentGatewayService;
+    private final PaymentGatewayService paymentGatewayService;
+    private final OrderPricingCalculator pricingCalculator;
+    private final OrderInventoryCoordinator inventoryCoordinator;
+    private final CustomerLoyaltyService loyaltyService;
 
-    private static final double VND_PER_POINT_EARNED = 10000.0;
-    private static final double VND_PER_POINT_REDEEMED = 1000.0;
-    private static final double DEFAULT_TAX_RATE = 10.0;
-    // Giới hạn chiết khấu trực tiếp (không có mã Coupon) của Thu ngân tối đa 10% (đặt = 0.0 nếu muốn cấm hoàn toàn)
-    private static final double MAX_CASHIER_MANUAL_DISCOUNT_PERCENT = 10.0;
-    private static final Pattern POINTS_USED_PATTERN = Pattern.compile("-(\\d+)\\s*pts");
-
-    /** Số điểm đã dùng để giảm giá trong đơn (được ghi trong couponCode dạng "POINTS (-N pts)"). */
-    private int extractPointsUsed(Order order) {
-        if (order.getCouponCode() == null || !order.getCouponCode().startsWith("POINTS")) {
-            return 0;
-        }
-        Matcher matcher = POINTS_USED_PATTERN.matcher(order.getCouponCode());
-        return matcher.find() ? Integer.parseInt(matcher.group(1)) : 0;
-    }
-
-    /** Hoàn lại điểm đã dùng và thu hồi phần điểm đã tích CHƯA bị khấu trừ bởi các lần hoàn tiền một phần trước đó. */
-    private void revertRemainingCustomerLoyalty(Order order, List<Refund> priorRefunds) {
-        if (order.getCustomer() == null) {
-            return;
-        }
-        Customer customer = customerRepository.findByIdWithLock(order.getCustomer().getId())
-                .orElse(order.getCustomer());
-        int currentPoints = customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0;
-        int totalEarned = (int) Math.floor((order.getTotalAmount() != null ? order.getTotalAmount() : 0.0) / VND_PER_POINT_EARNED);
-        // Điểm đã thu hồi theo LŨY KẾ tổng tiền đã hoàn (khớp RefundServiceImpl), không cộng floor từng lần hoàn
-        // để tránh lệch làm tròn khi hoàn tiền nhiều lần.
-        double totalRefundedAmount = priorRefunds == null ? 0.0 : priorRefunds.stream()
-                .mapToDouble(r -> r.getAmount() != null ? r.getAmount() : 0.0)
-                .sum();
-        int alreadyDeductedByRefunds = Math.min(totalEarned, (int) Math.floor(totalRefundedAmount / VND_PER_POINT_EARNED));
-        int remainingEarnedToDeduct = Math.max(0, totalEarned - alreadyDeductedByRefunds);
-        // Đơn chưa ở trạng thái REFUNDED thì điểm đã dùng (POINTS coupon) chưa được hoàn trả ở bước hoàn tiền một phần
-        int usedToRestore = extractPointsUsed(order);
-        int updated = Math.max(0, currentPoints + usedToRestore - remainingEarnedToDeduct);
-        if (updated != currentPoints) {
-            customer.setLoyaltyPoints(updated);
-            customerRepository.save(customer);
-        }
-    }
-
-    /** Hoàn kho các sản phẩm trong đơn, trừ đi số lượng đã hoàn kho ở các lần hoàn tiền một phần trước đó. */
-    private void restoreRemainingOrderInventory(Order order, List<Refund> priorRefunds) {
-        if (order.getBranch() == null || order.getItems() == null) {
-            return;
-        }
-        Map<Long, Integer> alreadyRestoredByOrderItemId = new HashMap<>();
-        Map<Long, Integer> alreadyRestoredByProductId = new HashMap<>();
-        if (priorRefunds != null) {
-            for (Refund r : priorRefunds) {
-                if (r.getItems() == null) continue;
-                for (RefundItem ri : r.getItems()) {
-                    int q = ri.getQuantity() != null ? ri.getQuantity() : 0;
-                    if (q <= 0) continue;
-                    if (ri.getOrderItemId() != null) {
-                        alreadyRestoredByOrderItemId.merge(ri.getOrderItemId(), q, Integer::sum);
-                    } else if (ri.getProductId() != null) {
-                        alreadyRestoredByProductId.merge(ri.getProductId(), q, Integer::sum);
-                    }
-                }
-            }
-        }
-
-        List<OrderItem> sortedItems = order.getItems().stream()
-                .filter(i -> i.getProduct() != null && i.getProduct().getId() != null)
-                .sorted(Comparator.comparing(i -> i.getProduct().getId()))
-                .collect(Collectors.toList());
-        for (OrderItem item : sortedItems) {
-            int orderedQty = item.getQuantity() != null ? item.getQuantity() : 0;
-            int alreadyRestored = item.getId() != null ? alreadyRestoredByOrderItemId.getOrDefault(item.getId(), 0) : 0;
-            if (alreadyRestored == 0) {
-                int fallbackProd = alreadyRestoredByProductId.getOrDefault(item.getProduct().getId(), 0);
-                if (fallbackProd > 0) {
-                    int consume = Math.min(orderedQty, fallbackProd);
-                    alreadyRestored = consume;
-                    alreadyRestoredByProductId.put(item.getProduct().getId(), fallbackProd - consume);
-                }
-            }
-            int remainingToRestore = Math.max(0, orderedQty - alreadyRestored);
-            if (remainingToRestore <= 0) {
-                continue;
-            }
-            try {
-                inventoryService.restoreInventory(
-                        item.getProduct().getId(),
-                        order.getBranch().getId(),
-                        remainingToRestore
-                );
-            } catch (Exception e) {
-                log.warn("Could not restore inventory for product {} of order {}: {}",
-                        item.getProduct().getId(), order.getId(), e.getMessage());
-            }
-        }
-    }
+    // =========================================================================
+    // TẠO ĐƠN HÀNG
+    // =========================================================================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public OrderDTO createOrder(OrderDTO orderDTO) throws Exception {
         User cashier = userService.getCurrentUser();
+        if (cashier.getRole() != UserRole.ROLE_CASHIER) {
+            throw new AccessDeniedException("Chỉ Thu ngân (ROLE_CASHIER) có ca đang mở mới được phép tạo đơn hàng tại quầy POS.");
+        }
+        assertCashierHasActiveShift(cashier);
+        assertCreatableStatus(orderDTO.getStatus());
 
-        // Thu ngân bắt buộc phải mở ca làm việc trước khi tạo đơn hàng tại quầy POS
-        if (cashier.getRole() == UserRole.ROLE_BRANCH_CASHIER) {
-            boolean hasActiveShift = shiftReportRepository
-                    .findTopByCashierAndShiftEndIsNullOrderByShiftStartDesc(cashier)
-                    .isPresent();
-            if (!hasActiveShift) {
-                throw new Exception("Vui lòng bắt đầu ca làm việc (Start Shift) trước khi tạo đơn hàng.");
-            }
+        Branch branch = resolveOrderBranch(cashier, orderDTO);
+        assertStoreCanSell(branch);
+        assertUserBelongsToBranchStore(cashier, branch);
+
+        List<OrderItemDTO> normalizedItems = normalizeItems(orderDTO.getItems());
+        Customer customer = resolveCustomer(orderDTO, branch);
+
+        String reqSessionId = trimToNull(orderDTO.getPaymentSessionId());
+        Order order = buildOrderHeader(orderDTO, branch, cashier, customer, reqSessionId);
+        List<OrderItem> orderItems = buildOrderItems(order, normalizedItems, branch);
+
+        DiscountResult discount = applyPricing(order, orderItems, orderDTO, customer, branch, cashier);
+        double totalAmount = order.getTotalAmount();
+
+        boolean needsGatewayPayment = requiresGatewayPayment(order, totalAmount);
+        if (needsGatewayPayment && reqSessionId == null) {
+            throw new AccessDeniedException(
+                    "Đơn hàng thanh toán qua Thẻ hoặc QR MoMo/VietQR bắt buộc phải có phiên thanh toán xác thực từ cổng thanh toán."
+            );
         }
 
-        if (orderDTO.getStatus() == OrderStatus.REFUNDED || orderDTO.getStatus() == OrderStatus.CANCELLED) {
-            throw new IllegalArgumentException("A new order cannot be created with status " + orderDTO.getStatus());
+        inventoryCoordinator.deductForItems(orderItems, branch.getId());
+
+        // Chỉ tiêu thụ (consume) phiên thanh toán SAU KHI đã kiểm tra và trừ tồn kho thành công
+        if (needsGatewayPayment) {
+            consumePaymentSession(order, reqSessionId, storeIdOf(branch), totalAmount, null);
         }
 
-        Branch branch;
+        Customer savedCustomer = loyaltyService.applyForNewOrder(
+                customer, order.getStatus() == OrderStatus.COMPLETED, totalAmount, discount.pointsUsed());
+        if (savedCustomer != null) {
+            order.setCustomer(savedCustomer);
+        }
+
+        Order savedOrder = saveAndLinkSession(order, reqSessionId);
+        log.info("Order {} created with status {}. Inventory deducted for {} items.",
+                savedOrder.getId(), savedOrder.getStatus(), orderItems.size());
+        return OrderMapper.toDTO(savedOrder);
+    }
+
+    /** Thu ngân bắt buộc phải mở ca làm việc trước khi tạo đơn hàng tại quầy POS. */
+    private void assertCashierHasActiveShift(User cashier) throws Exception {
+        if (cashier.getRole() != UserRole.ROLE_CASHIER) {
+            return;
+        }
+        boolean hasActiveShift = shiftReportRepository
+                .findTopByCashierAndShiftEndIsNullOrderByShiftStartDesc(cashier)
+                .isPresent();
+        if (!hasActiveShift) {
+            throw new Exception("Vui lòng bắt đầu ca làm việc (Start Shift) trước khi tạo đơn hàng.");
+        }
+    }
+
+    private void assertCreatableStatus(OrderStatus status) {
+        if (status == OrderStatus.REFUNDED
+                || status == OrderStatus.PARTIALLY_REFUNDED
+                || status == OrderStatus.CANCELLED) {
+            throw new IllegalArgumentException("A new order cannot be created with status " + status);
+        }
+    }
+
+    private Branch resolveOrderBranch(User cashier, OrderDTO orderDTO) throws Exception {
         if (cashier.getBranch() != null) {
             if (orderDTO.getBranchId() != null && !cashier.getBranch().getId().equals(orderDTO.getBranchId())) {
                 throw new Exception("You do not have permission to create orders for another branch");
             }
-            branch = cashier.getBranch();
-        } else if (orderDTO.getBranchId() != null) {
-            branch = branchRepository.findById(orderDTO.getBranchId())
+            return cashier.getBranch();
+        }
+        if (orderDTO.getBranchId() != null) {
+            return branchRepository.findById(orderDTO.getBranchId())
                     .orElseThrow(() -> new Exception("Branch not found with id: " + orderDTO.getBranchId()));
+        }
+        throw new Exception("Branch is required to create an order");
+    }
+
+    /** Store bị khóa hoặc chưa được duyệt thì không được bán hàng. */
+    private void assertStoreCanSell(Branch branch) throws Exception {
+        Store store = branch.getStore();
+        if (store == null) {
+            return;
+        }
+        if (store.getStatus() == StoreStatus.BLOCKED) {
+            throw new Exception("Store is currently blocked and cannot create new orders");
+        }
+        if (store.getStatus() == StoreStatus.PENDING || store.getStatus() == StoreStatus.REJECTED) {
+            throw new Exception("Store is pending Super Admin approval and cannot create new orders yet");
+        }
+    }
+
+    private void assertUserBelongsToBranchStore(User cashier, Branch branch) throws Exception {
+        Store branchStore = branch.getStore();
+        if (branchStore == null) {
+            return;
+        }
+        Long cashierStoreId;
+        if (cashier.getStore() != null) {
+            cashierStoreId = cashier.getStore().getId();
         } else {
-            throw new Exception("Branch is required to create an order");
+            boolean isStoreAdmin = branchStore.getStoreAdmin() != null
+                    && branchStore.getStoreAdmin().getId().equals(cashier.getId());
+            cashierStoreId = isStoreAdmin ? branchStore.getId() : null;
         }
+        if (cashierStoreId == null || !cashierStoreId.equals(branchStore.getId())) {
+            throw new Exception("You do not have permission to create orders for this branch");
+        }
+    }
 
-        // Kiểm tra trạng thái Store và quyền truy cập Branch
-        if (branch.getStore() != null) {
-            if (branch.getStore().getStatus() == StoreStatus.BLOCKED) {
-                throw new Exception("Store is currently blocked and cannot create new orders");
-            }
-            if (branch.getStore().getStatus() == StoreStatus.PENDING) {
-                throw new Exception("Store is pending Super Admin approval and cannot create new orders yet");
-            }
-        }
-        if (cashier.getRole() != UserRole.ROLE_ADMIN && branch.getStore() != null) {
-            Long cashierStoreId = cashier.getStore() != null
-                    ? cashier.getStore().getId()
-                    : (branch.getStore().getStoreAdmin() != null
-                    && branch.getStore().getStoreAdmin().getId().equals(cashier.getId())
-                    ? branch.getStore().getId() : null);
-            if (cashierStoreId == null || !cashierStoreId.equals(branch.getStore().getId())) {
-                throw new Exception("You do not have permission to create orders for this branch");
-            }
-        }
-
-        if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
+    /** Kiểm tra dữ liệu dòng hàng và gộp các dòng trùng productId. */
+    private List<OrderItemDTO> normalizeItems(List<OrderItemDTO> items) throws Exception {
+        if (items == null || items.isEmpty()) {
             throw new Exception("Order must contain at least one item");
         }
-
-        for (OrderItemDTO itemDto : orderDTO.getItems()) {
+        for (OrderItemDTO itemDto : items) {
             if (itemDto.getQuantity() == null || itemDto.getQuantity() <= 0) {
                 throw new IllegalArgumentException("Item quantity must be greater than 0");
             }
         }
-
-        Map<Long, Integer> mergedQtyByProductId = new java.util.LinkedHashMap<>();
-        for (OrderItemDTO itemDto : orderDTO.getItems()) {
+        Map<Long, Integer> mergedQtyByProductId = new LinkedHashMap<>();
+        for (OrderItemDTO itemDto : items) {
             if (itemDto.getProductId() == null) {
                 throw new IllegalArgumentException("Product ID is required for each order item");
             }
             mergedQtyByProductId.merge(itemDto.getProductId(), itemDto.getQuantity(), Integer::sum);
         }
-
-        List<OrderItemDTO> normalizedItems = mergedQtyByProductId.entrySet().stream()
-                .map(e -> OrderItemDTO.builder()
-                        .productId(e.getKey())
-                        .quantity(e.getValue())
-                        .build())
+        return mergedQtyByProductId.entrySet().stream()
+                .map(e -> OrderItemDTO.builder().productId(e.getKey()).quantity(e.getValue()).build())
                 .collect(Collectors.toList());
+    }
 
-        Customer customer = null;
+    private Customer resolveCustomer(OrderDTO orderDTO, Branch branch) throws Exception {
         Long reqCustomerId = orderDTO.getCustomerId() != null
                 ? orderDTO.getCustomerId()
                 : (orderDTO.getCustomer() != null ? orderDTO.getCustomer().getId() : null);
-        if (reqCustomerId != null) {
-            customer = customerRepository.findByIdWithLock(reqCustomerId)
-                    .orElseThrow(() -> new Exception("Customer not found with id: " + reqCustomerId));
-            if (customer.getStore() != null && branch.getStore() != null
-                    && !customer.getStore().getId().equals(branch.getStore().getId())) {
-                throw new IllegalArgumentException("Customer does not belong to this store");
-            }
-            if (customer.getStore() == null && branch.getStore() != null) {
-                customer.setStore(branch.getStore());
-            }
+        if (reqCustomerId == null) {
+            return null;
         }
+        Customer customer = customerRepository.findByIdWithLock(reqCustomerId)
+                .orElseThrow(() -> new Exception("Customer not found with id: " + reqCustomerId));
+        if (branch.getStore() != null
+                && (customer.getStore() == null || !customer.getStore().getId().equals(branch.getStore().getId()))) {
+            throw new IllegalArgumentException("Customer does not belong to this store");
+        }
+        return customer;
+    }
 
-        final Branch finalBranch = branch;
-
-        Order order = Order.builder()
-                .branch(finalBranch)
+    private Order buildOrderHeader(OrderDTO dto, Branch branch, User cashier, Customer customer, String sessionId) {
+        OrderStatus targetStatus = dto.getStatus() != null ? dto.getStatus() : OrderStatus.COMPLETED;
+        PaymentType targetPaymentType = dto.getPaymentType() != null ? dto.getPaymentType() : PaymentType.CASH;
+        return Order.builder()
+                .branch(branch)
                 .cashier(cashier)
                 .customer(customer)
-                .paymentType(orderDTO.getPaymentType() != null ? orderDTO.getPaymentType() : PaymentType.CASH)
-                .note(orderDTO.getNote())
-                .status(orderDTO.getStatus() != null ? orderDTO.getStatus() : OrderStatus.COMPLETED)
+                .paymentType(targetPaymentType)
+                .paymentSessionId(sessionId)
+                .note(dto.getNote())
+                .status(targetStatus)
+                .paidAt(targetStatus == OrderStatus.COMPLETED ? LocalDateTime.now() : null)
                 .build();
+    }
 
-        List<Long> productIds = normalizedItems.stream()
-                .map(OrderItemDTO::getProductId)
-                .distinct()
-                .collect(Collectors.toList());
+    private List<OrderItem> buildOrderItems(Order order, List<OrderItemDTO> items, Branch branch) {
+        List<Long> productIds = items.stream().map(OrderItemDTO::getProductId).distinct().collect(Collectors.toList());
         Map<Long, Product> productMap = productRepository.findAllById(productIds).stream()
                 .collect(Collectors.toMap(Product::getId, Function.identity()));
 
-        List<OrderItem> orderItems = normalizedItems.stream()
-                .map(itemDto -> {
-                    Product product = productMap.get(itemDto.getProductId());
-                    if (product == null) {
-                        throw new EntityNotFoundException("Product not found with id: " + itemDto.getProductId());
-                    }
-                    if (product.getStore() != null && finalBranch.getStore() != null
-                            && !product.getStore().getId().equals(finalBranch.getStore().getId())) {
-                        throw new IllegalArgumentException("Product " + product.getId() + " does not belong to this store");
-                    }
-                    double unitPrice = product.getSellingPrice() != null ? product.getSellingPrice() : 0.0;
-
-                    return OrderItem.builder()
-                            .order(order)
-                            .product(product)
-                            .quantity(itemDto.getQuantity())
-                            .price(unitPrice * itemDto.getQuantity())
-                            .build();
-                })
-                .collect(Collectors.toList());
-
-        double subTotal = orderItems.stream()
-                .mapToDouble(OrderItem::getPrice)
-                .sum();
-
-        double discountAmount = 0.0;
-        String appliedCouponCode = null;
-        int pointsUsed = 0;
-
-        if (orderDTO.getCouponCode() != null && !orderDTO.getCouponCode().trim().isEmpty()) {
-            String code = orderDTO.getCouponCode().trim().toUpperCase();
-
-            if (code.startsWith("POINTS")) {
-                if (customer == null) {
-                    throw new Exception("Please select a customer to redeem loyalty points");
-                }
-                int availablePoints = customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0;
-                if (availablePoints <= 0) {
-                    throw new Exception("Customer does not have any loyalty points to redeem");
-                }
-                int maxPointsUsable = (int) Math.floor(subTotal / VND_PER_POINT_REDEEMED);
-                if (maxPointsUsable <= 0) {
-                    throw new Exception("Order subtotal must be at least 1,000 VND to redeem loyalty points");
-                }
-                pointsUsed = Math.min(availablePoints, maxPointsUsable);
-                discountAmount = pointsUsed * VND_PER_POINT_REDEEMED;
-                appliedCouponCode = "POINTS (-" + pointsUsed + " pts)";
-            } else {
-                if (finalBranch.getStore() == null) {
-                    throw new Exception("Branch does not belong to a valid store to apply coupon");
-                }
-                Coupon coupon = couponRepository.findByCodeAndStoreId(
-                                code,
-                                finalBranch.getStore().getId())
-                        .orElseThrow(() -> new Exception("Invalid coupon code"));
-
-                LocalDateTime now = LocalDateTime.now();
-                if (coupon.getValidFrom() != null && now.isBefore(coupon.getValidFrom())) {
-                    throw new Exception("Coupon is not active yet");
-                }
-                if (coupon.getValidUntil() != null && now.isAfter(coupon.getValidUntil())) {
-                    throw new Exception("Coupon is expired");
-                }
-                if (Boolean.FALSE.equals(coupon.getIsActive())) {
-                    throw new Exception("Coupon is disabled");
-                }
-                if (coupon.getMinOrderValue() != null && subTotal < coupon.getMinOrderValue()) {
-                    throw new Exception("Order amount is below minimum required for this coupon");
-                }
-
-                if ("PERCENTAGE".equalsIgnoreCase(coupon.getDiscountType())) {
-                    discountAmount = (subTotal * coupon.getDiscountValue()) / 100.0;
-                } else if ("FLAT".equalsIgnoreCase(coupon.getDiscountType())) {
-                    discountAmount = coupon.getDiscountValue();
-                }
-
-                if (discountAmount > subTotal) {
-                    discountAmount = subTotal;
-                }
-                appliedCouponCode = coupon.getCode();
+        return items.stream().map(itemDto -> {
+            Product product = productMap.get(itemDto.getProductId());
+            if (product == null) {
+                throw new EntityNotFoundException("Product not found with id: " + itemDto.getProductId());
             }
-        } else if (orderDTO.getDiscountAmount() != null && orderDTO.getDiscountAmount() > 0) {
-            if (cashier.getRole() == UserRole.ROLE_BRANCH_CASHIER) {
-                double maxAllowedManualDiscount = Math.round(subTotal * (MAX_CASHIER_MANUAL_DISCOUNT_PERCENT / 100.0));
-                if (orderDTO.getDiscountAmount() > maxAllowedManualDiscount + 0.01) {
-                    throw new org.springframework.security.access.AccessDeniedException(
-                            "Thu ngân không được giảm giá trực tiếp vượt quá " + (int) MAX_CASHIER_MANUAL_DISCOUNT_PERCENT
-                                    + "% tổng đơn khi không có mã Coupon hợp lệ."
-                    );
-                }
+            if (product.getStore() != null && branch.getStore() != null
+                    && !product.getStore().getId().equals(branch.getStore().getId())) {
+                throw new IllegalArgumentException("Product " + product.getId() + " does not belong to this store");
             }
-            discountAmount = Math.min(orderDTO.getDiscountAmount(), subTotal);
-        }
+            double unitPrice = product.getSellingPrice() != null ? product.getSellingPrice() : 0.0;
+            return OrderItem.builder()
+                    .order(order)
+                    .product(product)
+                    .quantity(itemDto.getQuantity())
+                    .price(unitPrice * itemDto.getQuantity())
+                    .build();
+        }).collect(Collectors.toList());
+    }
 
-        // Tính thuế (taxAmount) tại Server dựa trên cấu hình store.taxRate (mặc định 10%), không phụ thuộc client gửi lên
-        double configuredTaxRate = (finalBranch.getStore() != null && finalBranch.getStore().getTaxRate() != null)
-                ? Math.max(0.0, finalBranch.getStore().getTaxRate())
-                : DEFAULT_TAX_RATE;
-        // Thuế VAT tính trên số tiền sau chiết khấu
-        double taxableAmount = Math.max(0.0, subTotal - discountAmount);
-        double taxAmount = Math.round(taxableAmount * (configuredTaxRate / 100.0) * 100.0) / 100.0;
+    /** Tính tạm tính, chiết khấu, thuế (tại Server) và gán vào đơn. */
+    private DiscountResult applyPricing(Order order, List<OrderItem> items, OrderDTO dto,
+                                        Customer customer, Branch branch, User cashier) throws Exception {
+        double subTotal = pricingCalculator.subTotal(items);
+        DiscountResult discount = pricingCalculator.computeDiscount(dto, subTotal, customer, branch, cashier);
+        double taxableAmount = Math.max(0.0, subTotal - discount.amount());
+        double taxAmount = pricingCalculator.computeTax(taxableAmount, branch.getStore());
 
-        double totalAmount = Math.max(0.0, taxableAmount + taxAmount);
-
-        order.setItems(orderItems);
+        order.setItems(items);
         order.setSubTotal(subTotal);
         order.setTaxAmount(taxAmount);
-        order.setDiscountAmount(discountAmount);
-        order.setCouponCode(appliedCouponCode);
-        order.setTotalAmount(totalAmount);
-
-        List<OrderItem> sortedItemsForLock = orderItems.stream()
-                .sorted(Comparator.comparing(item -> item.getProduct().getId()))
-                .collect(Collectors.toList());
-
-        for (OrderItem item : sortedItemsForLock) {
-            Long productId = item.getProduct().getId();
-            Long branchId = finalBranch.getId();
-            int qty = item.getQuantity();
-            try {
-                inventoryService.deductInventory(productId, branchId, qty);
-            } catch (Exception e) {
-                throw new Exception("Failed to deduct inventory for product id " + productId + ": " + e.getMessage());
-            }
-        }
-
-        // Chỉ tiêu thụ (consume) phiên thanh toán SAU KHI đã kiểm tra và trừ tồn kho thành công
-        if ((order.getPaymentType() == PaymentType.CARD || order.getPaymentType() == PaymentType.UPI)
-                && orderDTO.getPaymentSessionId() != null
-                && !orderDTO.getPaymentSessionId().isBlank()
-                && totalAmount > 0) {
-            Long storeIdForVerify = finalBranch.getStore() != null ? finalBranch.getStore().getId() : null;
-            paymentGatewayService.verifyAndConsumePosOrderPayment(
-                    orderDTO.getPaymentSessionId(),
-                    storeIdForVerify,
-                    totalAmount
-            );
-        }
-
-        if (customer != null && order.getStatus() == OrderStatus.COMPLETED) {
-            int currentPoints = customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0;
-            int earnedPoints = (int) Math.floor(totalAmount / VND_PER_POINT_EARNED);
-            int updatedPoints = Math.max(0, currentPoints - pointsUsed + earnedPoints);
-
-            customer.setLoyaltyPoints(updatedPoints);
-            Customer savedCustomer = customerRepository.save(customer);
-            order.setCustomer(savedCustomer);
-            log.info("Customer {} loyalty points updated: {} -> {} (used: {}, earned: {})",
-                    customer.getId(), currentPoints, updatedPoints, pointsUsed, earnedPoints);
-        } else if (customer != null && pointsUsed > 0) {
-            int currentPoints = customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0;
-            customer.setLoyaltyPoints(Math.max(0, currentPoints - pointsUsed));
-            order.setCustomer(customerRepository.save(customer));
-        }
-
-        Order savedOrder = orderRepository.save(order);
-        log.info("Order {} created successfully. Inventory deducted for {} items.", savedOrder.getId(), orderItems.size());
-
-        return OrderMapper.toDTO(savedOrder);
+        order.setDiscountAmount(discount.amount());
+        order.setCouponCode(discount.appliedCode());
+        order.setTotalAmount(Math.max(0.0, taxableAmount + taxAmount));
+        return discount;
     }
+
+    /** Đơn COMPLETED qua CARD/UPI có giá trị > 0 bắt buộc phải có phiên thanh toán hợp lệ. */
+    private boolean requiresGatewayPayment(Order order, double totalAmount) {
+        return order.getStatus() == OrderStatus.COMPLETED && isGatewayPaymentType(order) && totalAmount > 0;
+    }
+
+    private boolean isGatewayPaymentType(Order order) {
+        return order.getPaymentType() == PaymentType.CARD || order.getPaymentType() == PaymentType.UPI;
+    }
+
+    private void consumePaymentSession(Order order, String sessionId, Long storeId,
+                                       double amount, Long orderId) {
+        PaymentSessionDTO verified = paymentGatewayService.verifyAndConsumePosOrderPayment(
+                sessionId, storeId, amount, orderId);
+        if (verified != null) {
+            order.setPaymentSessionId(verified.getSessionId());
+            order.setPaymentTransactionId(verified.getTransactionId());
+        }
+    }
+
+    private Order saveAndLinkSession(Order order, String sessionId) {
+        Order savedOrder = orderRepository.save(order);
+        if (sessionId != null) {
+            paymentGatewayService.linkOrderToSession(sessionId, savedOrder.getId());
+            // Nếu session đã SUCCESS sẵn tại thời điểm link (webhook đến cực nhanh), nạp lại trạng thái đơn mới nhất
+            savedOrder = orderRepository.findById(savedOrder.getId()).orElse(savedOrder);
+        }
+        return savedOrder;
+    }
+
+    // =========================================================================
+    // CẬP NHẬT TRẠNG THÁI ĐƠN
+    // =========================================================================
 
     @Override
     @Transactional(readOnly = true)
@@ -428,55 +312,171 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public OrderDTO updateOrderStatus(Long id, OrderStatus status) throws Exception {
+        return updateOrderStatus(id, status, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public OrderDTO updateOrderStatus(
+            Long id,
+            OrderStatus status,
+            PaymentType paymentType,
+            String paymentSessionId
+    ) throws Exception {
         if (status == null) {
             throw new IllegalArgumentException("Order status is required");
         }
-        Order order = orderRepository.findById(id).orElseThrow(
+        Order order = orderRepository.findByIdWithLock(id).orElseThrow(
                 () -> new Exception("Order not found with id " + id)
         );
-        accessControl.assertCanManageBranch(userService.getCurrentUser(), order.getBranch());
+        assertCanChangeStatus(order, status);
 
         OrderStatus current = order.getStatus();
+        assertValidTransition(current, status);
+
+        boolean paymentInfoProvided = paymentType != null || trimToNull(paymentSessionId) != null;
+        if (current == OrderStatus.PENDING) {
+            applyPendingPaymentInfo(order, paymentType, paymentSessionId);
+        }
+
         if (current == status) {
+            if (current == OrderStatus.PENDING && paymentInfoProvided) {
+                order = orderRepository.save(order);
+            }
             return OrderMapper.toDTO(order);
-        }
-        if (current == OrderStatus.REFUNDED || current == OrderStatus.CANCELLED) {
-            throw new IllegalStateException("Order is already " + current + " and its status can no longer be changed");
-        }
-        if (status == OrderStatus.REFUNDED) {
-            throw new IllegalArgumentException("Use the refund function to refund an order");
         }
 
         if (status == OrderStatus.CANCELLED) {
-            if (!refundRepository.findByOrderId(order.getId()).isEmpty()) {
-                throw new IllegalStateException("This order already has refunds. Please refund the remaining amount instead of cancelling it");
-            }
-            restoreRemainingOrderInventory(order, Collections.emptyList());
-            if (current == OrderStatus.COMPLETED || current == null) {
-                revertRemainingCustomerLoyalty(order, Collections.emptyList());
-            } else if (order.getCustomer() != null) {
-                int used = extractPointsUsed(order);
-                if (used > 0) {
-                    Customer customer = customerRepository.findByIdWithLock(order.getCustomer().getId())
-                            .orElse(order.getCustomer());
-                    int pts = customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0;
-                    customer.setLoyaltyPoints(pts + used);
-                    customerRepository.save(customer);
-                }
-            }
-        } else if (current == OrderStatus.PENDING && status == OrderStatus.COMPLETED && order.getCustomer() != null) {
-            Customer customer = customerRepository.findByIdWithLock(order.getCustomer().getId())
-                    .orElse(order.getCustomer());
-            int pts = customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0;
-            int earned = (int) Math.floor((order.getTotalAmount() != null ? order.getTotalAmount() : 0.0) / VND_PER_POINT_EARNED);
-            customer.setLoyaltyPoints(pts + earned);
-            customerRepository.save(customer);
+            cancelOrder(order, current);
+        } else if (current == OrderStatus.PENDING && status == OrderStatus.COMPLETED) {
+            completePendingOrder(order);
         }
 
         order.setStatus(status);
-        Order saved = orderRepository.save(order);
-        return OrderMapper.toDTO(saved);
+        return OrderMapper.toDTO(orderRepository.save(order));
     }
+
+    /**
+     * Cho phép Thu ngân (hoặc Quản lý chi nhánh) cập nhật trạng thái đơn đang PENDING
+     * (hoàn tất hoặc hủy khi đóng hộp thoại thanh toán); hủy đơn COMPLETED hoặc thay đổi khác chỉ dành cho Branch Manager.
+     */
+    private void assertCanChangeStatus(Order order, OrderStatus target) throws Exception {
+        User currentUser = userService.getCurrentUser();
+        if (order.getStatus() == OrderStatus.PENDING
+                && (target == OrderStatus.COMPLETED || target == OrderStatus.CANCELLED)) {
+            if (currentUser.getRole() != UserRole.ROLE_CASHIER
+                    && currentUser.getRole() != UserRole.ROLE_BRANCH_MANAGER) {
+                throw new AccessDeniedException("Chỉ Thu ngân hoặc Quản lý chi nhánh mới có quyền xử lý đơn chờ thanh toán.");
+            }
+            accessControl.assertCanAccessBranch(currentUser, order.getBranch());
+        } else {
+            if (currentUser.getRole() != UserRole.ROLE_BRANCH_MANAGER) {
+                throw new AccessDeniedException("Chỉ Quản lý chi nhánh (Branch Manager) mới có quyền hủy hoặc thay đổi trạng thái đơn hàng này.");
+            }
+            accessControl.assertCanManageBranch(currentUser, order.getBranch());
+        }
+    }
+
+    private void assertValidTransition(OrderStatus current, OrderStatus target) {
+        if (current == OrderStatus.REFUNDED || current == OrderStatus.CANCELLED) {
+            throw new IllegalStateException("Order is already " + current + " and its status can no longer be changed");
+        }
+        if (target == OrderStatus.REFUNDED || target == OrderStatus.PARTIALLY_REFUNDED) {
+            throw new IllegalArgumentException("Use the refund function to refund an order");
+        }
+        if (current == OrderStatus.PARTIALLY_REFUNDED && target == OrderStatus.CANCELLED) {
+            throw new IllegalStateException("This order already has partial refunds. Please refund the remaining amount instead of cancelling it");
+        }
+        if ((current == OrderStatus.COMPLETED || current == OrderStatus.PARTIALLY_REFUNDED)
+                && target == OrderStatus.PENDING) {
+            throw new IllegalStateException("A completed order cannot be reverted back to PENDING");
+        }
+    }
+
+    private void applyPendingPaymentInfo(Order order, PaymentType paymentType, String paymentSessionId) {
+        if (paymentType != null) {
+            order.setPaymentType(paymentType);
+        }
+        String sessionId = trimToNull(paymentSessionId);
+        if (sessionId != null) {
+            order.setPaymentSessionId(sessionId);
+        }
+    }
+
+    /** Hủy đơn: hoàn kho và hoàn/thu hồi điểm tùy theo đơn đã từng tích điểm hay chưa. */
+    private void cancelOrder(Order order, OrderStatus current) {
+        if (!refundRepository.findByOrderId(order.getId()).isEmpty()) {
+            throw new IllegalStateException("This order already has refunds. Please refund the remaining amount instead of cancelling it");
+        }
+        inventoryCoordinator.restoreRemainingForOrder(order, Collections.emptyList());
+        if (current == OrderStatus.COMPLETED || current == null) {
+            loyaltyService.revertRemaining(order, Collections.emptyList());
+        } else {
+            loyaltyService.restoreUsedPoints(order);
+        }
+    }
+
+    /** Hoàn tất đơn PENDING: xác minh phiên thanh toán (CARD/UPI), cộng điểm và ghi nhận thời điểm thanh toán. */
+    private void completePendingOrder(Order order) {
+        double totalAmt = order.getTotalAmount() != null ? order.getTotalAmount() : 0.0;
+        if (isGatewayPaymentType(order) && totalAmt > 0) {
+            String sessionToVerify = order.getPaymentSessionId();
+            if (sessionToVerify == null || sessionToVerify.isBlank()) {
+                throw new AccessDeniedException(
+                        "Đơn hàng chờ thanh toán QR/Thẻ chưa gắn phiên giao dịch hoặc chưa nhận được xác nhận tiền từ cổng thanh toán."
+                );
+            }
+            consumePaymentSession(order, sessionToVerify, storeIdOf(order.getBranch()), totalAmt, order.getId());
+        }
+        loyaltyService.awardOnCompletion(order, totalAmt);
+        order.setPaidAt(LocalDateTime.now());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int cancelExpiredPendingOrders() {
+        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(30);
+        List<Order> expiredPending = orderRepository.findByStatusAndCreatedAtBefore(OrderStatus.PENDING, cutoff);
+        int cancelledCount = 0;
+        for (Order candidate : expiredPending) {
+            try {
+                if (cancelExpiredOrder(candidate.getId())) {
+                    cancelledCount++;
+                }
+            } catch (Exception e) {
+                log.warn("Could not auto-cancel expired PENDING order {}: {}", candidate.getId(), e.getMessage());
+            }
+        }
+        if (cancelledCount > 0) {
+            log.info("Auto-cancelled {} expired unpaid PENDING order(s) older than 30 minutes and restored inventory", cancelledCount);
+        }
+        return cancelledCount;
+    }
+
+    /** @return true nếu đơn thực sự bị hủy. */
+    private boolean cancelExpiredOrder(Long orderId) {
+        Order order = orderRepository.findByIdWithLock(orderId).orElse(null);
+        if (order == null || order.getStatus() != OrderStatus.PENDING) {
+            return false;
+        }
+        // Nếu phiên thanh toán thực chất đã SUCCESS thì tự hoàn tất thay vì hủy
+        if (order.getPaymentSessionId() != null && !order.getPaymentSessionId().isBlank()) {
+            PaymentSessionDTO session = paymentGatewayService.getRawSession(order.getPaymentSessionId());
+            if (session != null && "SUCCESS".equalsIgnoreCase(session.getStatus())) {
+                paymentGatewayService.linkOrderToSession(order.getPaymentSessionId(), order.getId());
+                return false;
+            }
+        }
+        inventoryCoordinator.restoreRemainingForOrder(order, Collections.emptyList());
+        loyaltyService.restoreUsedPoints(order);
+        order.setStatus(OrderStatus.CANCELLED);
+        orderRepository.save(order);
+        return true;
+    }
+
+    // =========================================================================
+    // TRA CỨU & XÓA ĐƠN
+    // =========================================================================
 
     @Override
     @Transactional(readOnly = true)
@@ -536,33 +536,28 @@ public class OrderServiceImpl implements OrderService {
         accessControl.assertStoreLevelOrAdmin(userService.getCurrentUser(), orderStore);
 
         List<Refund> orderRefunds = refundRepository.findByOrderId(id);
-
-        // Đơn REFUNDED đã hoàn kho & hoàn điểm 100%, đơn CANCELLED đã hoàn kho & điểm khi hủy -> không hoàn lần nữa
-        boolean alreadyFullyReverted = order.getStatus() == OrderStatus.REFUNDED
-                || order.getStatus() == OrderStatus.CANCELLED;
-        if (!alreadyFullyReverted) {
-            restoreRemainingOrderInventory(order, orderRefunds);
-            if (order.getStatus() == OrderStatus.COMPLETED || order.getStatus() == null) {
-                // Thu hồi đầy đủ phần điểm thưởng còn lại kể cả khi đơn đã từng hoàn tiền một phần (Partial Refund)
-                revertRemainingCustomerLoyalty(order, orderRefunds);
-            } else if (order.getCustomer() != null) {
-                int used = extractPointsUsed(order);
-                if (used > 0) {
-                    Customer customer = customerRepository.findByIdWithLock(order.getCustomer().getId())
-                            .orElse(order.getCustomer());
-                    int pts = customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0;
-                    customer.setLoyaltyPoints(pts + used);
-                    customerRepository.save(customer);
-                }
-            }
-        }
+        revertSideEffectsBeforeDelete(order, orderRefunds);
 
         for (Refund r : orderRefunds) {
             r.setOrder(null);
             refundRepository.save(r);
         }
-
         orderRepository.delete(order);
+    }
+
+    private void revertSideEffectsBeforeDelete(Order order, List<Refund> orderRefunds) {
+        // Đơn REFUNDED đã hoàn kho & hoàn điểm 100%, đơn CANCELLED đã hoàn kho & điểm khi hủy -> không hoàn lần nữa
+        OrderStatus status = order.getStatus();
+        if (status == OrderStatus.REFUNDED || status == OrderStatus.CANCELLED) {
+            return;
+        }
+        inventoryCoordinator.restoreRemainingForOrder(order, orderRefunds);
+        if (status == OrderStatus.COMPLETED || status == OrderStatus.PARTIALLY_REFUNDED || status == null) {
+            // Thu hồi đầy đủ phần điểm thưởng còn lại kể cả khi đơn đã từng hoàn tiền một phần (Partial Refund)
+            loyaltyService.revertRemaining(order, orderRefunds);
+        } else {
+            loyaltyService.restoreUsedPoints(order);
+        }
     }
 
     @Override
@@ -596,5 +591,17 @@ public class OrderServiceImpl implements OrderService {
         return orderRepository.findTop5ByBranchIdOrderByCreatedAtDesc(branchId).stream()
                 .map(OrderMapper::toDTO)
                 .collect(Collectors.toList());
+    }
+
+    // =========================================================================
+    // TIỆN ÍCH
+    // =========================================================================
+
+    private static String trimToNull(String value) {
+        return value != null && !value.isBlank() ? value.trim() : null;
+    }
+
+    private static Long storeIdOf(Branch branch) {
+        return branch != null && branch.getStore() != null ? branch.getStore().getId() : null;
     }
 }

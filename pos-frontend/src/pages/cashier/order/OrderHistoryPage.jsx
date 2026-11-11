@@ -21,11 +21,14 @@ import {
   Download,
 } from "lucide-react";
 import { getOrdersByCashier } from "@/Redux Toolkit/features/order/orderThunks";
+import { useSidebar } from "../../../context/hooks/useSidebar";
 import OrderDetails from "./OrderDetails/OrderDetails";
 import OrderTable from "./OrderTable";
 import { handleDownloadOrderPDF, handlePrintOrderPDF } from "./pdf/pdfUtils";
+import UserProfileMenu from "@/components/account/UserProfileMenu";
 
 const OrderHistoryPage = () => {
+  const { setSidebarOpen } = useSidebar();
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -97,7 +100,7 @@ const OrderHistoryPage = () => {
       if (dateFilter === "custom") {
         const startOk =
           !customDateRange.start ||
-          orderDate >= new Date(customDateRange.start);
+          orderDate >= new Date(`${customDateRange.start}T00:00:00`);
         const endOk =
           !customDateRange.end ||
           orderDate <= new Date(`${customDateRange.end}T23:59:59`);
@@ -118,10 +121,14 @@ const OrderHistoryPage = () => {
 
   const handleInitiateReturn = (order) => {
     const statusUpper = String(order?.status || "").toUpperCase();
-    if (statusUpper === "REFUNDED" || statusUpper === "CANCELLED") {
+    if (
+      statusUpper === "REFUNDED" ||
+      statusUpper === "CANCELLED" ||
+      statusUpper === "PENDING"
+    ) {
       toast({
         title: "Return Unavailable",
-        description: `Order #${order.id} is already ${statusUpper.toLowerCase()}.`,
+        description: `Order #${order.id} is ${statusUpper.toLowerCase()} and cannot be refunded.`,
         variant: "destructive",
       });
       return;
@@ -150,17 +157,42 @@ const OrderHistoryPage = () => {
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 bg-card border-b flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Order History</h1>
-        <Button
-          variant="outline"
-          onClick={handleRefreshOrders}
-          disabled={loading}
-        >
-          <RefreshCw
-            className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
-          />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            className="z-10 p-2 h-10 w-10 rounded-lg shadow-sm border-border hover:bg-muted shrink-0"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open sidebar"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </Button>
+          <h1 className="text-2xl font-bold">Order History</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={handleRefreshOrders}
+            disabled={loading}
+          >
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+          <UserProfileMenu />
+        </div>
       </div>
 
       <div className="p-4 border-b">

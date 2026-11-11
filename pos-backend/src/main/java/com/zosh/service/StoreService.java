@@ -20,5 +20,6 @@ public interface StoreService {
     StoreDTO getStoreByEmployee() throws UserException;
 
     StoreDTO moderateStore(Long id, StoreStatus status) throws Exception;
+    StoreDTO moderateStore(Long id, StoreStatus status, String reason) throws Exception;
 
 }

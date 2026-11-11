@@ -1,6 +1,9 @@
 package com.zosh.payload.dto;
 
 import com.zosh.domain.PaymentType;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,10 +21,12 @@ public class RefundDTO {
     private Long id;
 
     private OrderDTO order;
+    @NotNull(message = "Order ID is required")
     private Long orderId;
 
     private String reason;
 
+    @Positive(message = "Refund amount must be greater than 0")
     private Double amount;
 
     private Long shiftReportId;
@@ -34,6 +39,7 @@ public class RefundDTO {
 
     private PaymentType paymentType;
 
+    @Valid
     private List<RefundItemDTO> items;
 
     private LocalDateTime createdAt;

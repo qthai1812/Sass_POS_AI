@@ -32,6 +32,7 @@ const ProductCard = ({ product, stockQuantity = 0, trackStock = true }) => {
       }),
     );
     toast({
+      id: "pos-add-to-cart",
       title: "Added to cart",
       description: trackStock
         ? `${product.name} added to cart (Còn lại: ${remainingStock - 1})`

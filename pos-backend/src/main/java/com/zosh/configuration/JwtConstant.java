@@ -23,14 +23,25 @@ public final class JwtConstant {
         if (configured == null || configured.isBlank()) {
             configured = System.getenv("JWT_SECRET");
         }
+        String activeProfile = System.getProperty("spring.profiles.active",
+                System.getenv().getOrDefault("SPRING_PROFILES_ACTIVE", "dev"));
+        boolean isProd = activeProfile != null && (activeProfile.toLowerCase().contains("prod")
+                || activeProfile.toLowerCase().contains("production"));
+
         if (configured != null && !configured.isBlank()) {
             byte[] bytes = configured.trim().getBytes(StandardCharsets.UTF_8);
             if (bytes.length >= 32) {
                 return Keys.hmacShaKeyFor(bytes);
             }
-            log.warn("Configured JWT_SECRET is shorter than 32 bytes; padding via SHA-256 derivation is recommended. Generating ephemeral 512-bit key instead.");
+            if (isProd) {
+                throw new IllegalStateException("JWT_SECRET in production must be at least 32 bytes (256 bits).");
+            }
+            log.warn("Configured JWT_SECRET is shorter than 32 bytes; generating ephemeral 512-bit key for dev.");
         } else {
-            log.warn("JWT_SECRET environment variable is not set. Using an ephemeral runtime 512-bit signing key (tokens will reset on server restart). Set JWT_SECRET in production.");
+            if (isProd) {
+                throw new IllegalStateException("JWT_SECRET environment variable must be configured in production.");
+            }
+            log.warn("JWT_SECRET environment variable is not set. Using an ephemeral runtime 512-bit signing key (dev only).");
         }
         byte[] randomBytes = new byte[64];
         new SecureRandom().nextBytes(randomBytes);

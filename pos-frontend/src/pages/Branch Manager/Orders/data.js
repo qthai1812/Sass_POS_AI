@@ -7,6 +7,7 @@ export const paymentModeMap = {
 export const statusMap = {
   all: undefined,
   Completed: "COMPLETED",
+  PartiallyRefunded: "PARTIALLY_REFUNDED",
   Pending: "PENDING",
   Cancelled: "CANCELLED",
   Refunded: "REFUNDED",
