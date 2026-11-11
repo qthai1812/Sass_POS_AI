@@ -40,7 +40,9 @@ public interface RefundRepository extends JpaRepository<Refund, Long> {
             FROM Refund r
             WHERE r.order IS NOT NULL
               AND r.order.branch.store.id IS NOT NULL
-              AND (r.order.status IS NULL OR r.order.status = com.zosh.domain.OrderStatus.COMPLETED)
+              AND (r.order.status IS NULL
+                   OR r.order.status = com.zosh.domain.OrderStatus.COMPLETED
+                   OR r.order.status = com.zosh.domain.OrderStatus.PARTIALLY_REFUNDED)
             GROUP BY r.order.branch.store.id
             """)
     List<Object[]> sumRefundsOnCompletedOrdersGroupedByStore();
@@ -50,7 +52,9 @@ public interface RefundRepository extends JpaRepository<Refund, Long> {
             FROM Refund r
             WHERE r.order IS NOT NULL
               AND r.order.branch.store.id = :storeId
-              AND (r.order.status IS NULL OR r.order.status = com.zosh.domain.OrderStatus.COMPLETED)
+              AND (r.order.status IS NULL
+                   OR r.order.status = com.zosh.domain.OrderStatus.COMPLETED
+                   OR r.order.status = com.zosh.domain.OrderStatus.PARTIALLY_REFUNDED)
             """)
     Double sumRefundsOnCompletedOrdersByStoreId(@Param("storeId") Long storeId);
 
@@ -59,7 +63,9 @@ public interface RefundRepository extends JpaRepository<Refund, Long> {
             FROM Refund r
             WHERE r.order IS NOT NULL
               AND r.order.branch.id = :branchId
-              AND (r.order.status IS NULL OR r.order.status = com.zosh.domain.OrderStatus.COMPLETED)
+              AND (r.order.status IS NULL
+                   OR r.order.status = com.zosh.domain.OrderStatus.COMPLETED
+                   OR r.order.status = com.zosh.domain.OrderStatus.PARTIALLY_REFUNDED)
             """)
     Double sumRefundsOnCompletedOrdersByBranchId(@Param("branchId") Long branchId);
 }

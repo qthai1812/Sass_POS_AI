@@ -10,6 +10,7 @@ import {
   getRecentOrdersByBranch,
   updateOrderStatus,
 } from './orderThunks';
+import { createRefund } from '../refund/refundThunks';
 
 const initialState = {
   orders: [],
@@ -56,7 +57,16 @@ const orderSlice = createSlice({
       })
 
       .addCase(getOrderById.fulfilled, (state, action) => {
-        state.selectedOrder = action.payload;
+        const fetched = action.payload;
+        state.selectedOrder = fetched;
+        if (fetched?.id != null) {
+          const replaceIfPresent = (list) =>
+            (list || []).map((o) => (o.id === fetched.id ? fetched : o));
+          state.orders = replaceIfPresent(state.orders);
+          state.todayOrders = replaceIfPresent(state.todayOrders);
+          state.customerOrders = replaceIfPresent(state.customerOrders);
+          state.recentOrders = replaceIfPresent(state.recentOrders);
+        }
       })
 
       .addCase(getOrdersByBranch.fulfilled, (state, action) => {
@@ -115,6 +125,30 @@ const orderSlice = createSlice({
       .addCase(updateOrderStatus.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+      })
+
+      .addCase(createRefund.fulfilled, (state, action) => {
+        const refund = action.payload;
+        if (!refund?.orderId) return;
+        const targetOrderId = Number(refund.orderId);
+        const markRefundedStatus = (order) => {
+          if (!order || Number(order.id) !== targetOrderId) return order;
+          const currentStatus = String(order.status || "").toUpperCase();
+          if (currentStatus === "REFUNDED") return order;
+          const total = Number(order.totalAmount || 0);
+          const nextStatus =
+            total > 0 && Number(refund.amount || 0) >= total - 0.01
+              ? "REFUNDED"
+              : "PARTIALLY_REFUNDED";
+          return { ...order, status: nextStatus };
+        };
+        state.orders = (state.orders || []).map(markRefundedStatus);
+        state.todayOrders = (state.todayOrders || []).map(markRefundedStatus);
+        state.customerOrders = (state.customerOrders || []).map(markRefundedStatus);
+        state.recentOrders = (state.recentOrders || []).map(markRefundedStatus);
+        if (state.selectedOrder && Number(state.selectedOrder.id) === targetOrderId) {
+          state.selectedOrder = markRefundedStatus(state.selectedOrder);
+        }
       })
 
       .addMatcher(

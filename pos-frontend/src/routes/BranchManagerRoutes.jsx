@@ -37,7 +37,7 @@ const BranchManagerRoutes = () => {
           }
         />
         <Route path="employees" element={<BranchEmployees />} />
-        <Route path="customers" element={<Customers />} />
+        <Route path="customers" element={<Customers scope="BRANCH" />} />
         <Route
           path="reports"
           element={

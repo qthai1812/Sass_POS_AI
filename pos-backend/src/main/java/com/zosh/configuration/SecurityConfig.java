@@ -1,7 +1,10 @@
 package com.zosh.configuration;
 
+import com.zosh.repository.UserRepository;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,10 +33,23 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final UserRepository userRepository;
 
     @Value("${app.frontend-url:${FRONTEND_URL:http://localhost:5173}}")
     private String frontendUrl;
+
+    @Value("${app.jwt.secret:}")
+    private String configuredJwtSecret;
+
+    @PostConstruct
+    public void initJwtSecret() {
+        if (configuredJwtSecret != null && !configuredJwtSecret.isBlank()) {
+            JwtConstant.configureSecret(configuredJwtSecret);
+        }
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -45,21 +61,22 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/api/media/download/**").permitAll()
-                        .requestMatchers(HttpMethod.PUT, "/api/payment-gateway/platform-config").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/payment-gateway/platform-config").hasRole("SUPER_ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/payment-gateway/platform-config").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/payment-gateway/sessions").authenticated()
                         .requestMatchers(
-                                "/api/payment-gateway/checkout/**",
-                                "/api/payment-gateway/webhook/**",
-                                "/api/payment-gateway/sessions/**"
+                                HttpMethod.GET, "/api/payment-gateway/checkout/**"
                         ).permitAll()
-                        // Cho phép Store Admin đã đăng nhập xem danh sách gói cước ở trang Upgrade
+                        .requestMatchers(
+                                HttpMethod.POST, "/api/payment-gateway/webhook/**"
+                        ).permitAll()
+                        .requestMatchers("/api/payment-gateway/sessions/**").authenticated()
+                        // Cho phép Store Owner đã đăng nhập xem danh sách gói cước ở trang Upgrade
                         .requestMatchers(HttpMethod.GET, "/api/super-admin/subscription-plans/**").authenticated()
-                        .requestMatchers("/api/super-admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/super-admin/**").hasRole("SUPER_ADMIN")
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )
-                .addFilterBefore(new JwtValidator(), BasicAuthenticationFilter.class)
+                .addFilterBefore(new JwtValidator(userRepository), BasicAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(restAuthenticationEntryPoint())
                         .accessDeniedHandler(restAccessDeniedHandler())

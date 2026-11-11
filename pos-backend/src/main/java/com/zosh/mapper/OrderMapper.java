@@ -26,7 +26,10 @@ public class OrderMapper {
                 .customer(order.getCustomer())
                 .paymentType(order.getPaymentType())
                 .status(order.getStatus())
+                .paymentSessionId(order.getPaymentSessionId())
+                .paymentTransactionId(order.getPaymentTransactionId())
                 .createdAt(order.getCreatedAt())
+                .paidAt(order.getPaidAt())
                 .items(order.getItems() != null
                         ? order.getItems().stream()
                         .map(OrderItemMapper::toDTO)

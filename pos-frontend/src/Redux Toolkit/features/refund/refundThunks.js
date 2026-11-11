@@ -179,6 +179,22 @@ export const getRefundsByBranch = createAsyncThunk(
   },
 );
 
+// 🔹 Get Refunds by Order
+export const getRefundsByOrder = createAsyncThunk(
+  "refund/getByOrder",
+  async (orderId, { rejectWithValue }) => {
+    try {
+      const headers = getAuthHeaders();
+      const res = await api.get(`/api/refunds/order/${orderId}`, { headers });
+      return { orderId, refunds: res.data || [] };
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch refunds by order",
+      );
+    }
+  },
+);
+
 // 🔹 Get Refunds by Shift Report
 export const getRefundsByShift = createAsyncThunk(
   "refund/getByShift",

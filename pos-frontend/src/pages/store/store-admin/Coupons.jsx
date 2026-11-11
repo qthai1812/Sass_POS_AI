@@ -69,11 +69,13 @@ export default function Coupons() {
   }, [error, toast, dispatch]);
 
   const handleSubmit = async (e) => {
+    e.preventDefault();
     const cleanCode = formData.code ? formData.code.trim().toUpperCase() : "";
     if (cleanCode.startsWith("POINTS")) {
       toast({
         title: "Mã không hợp lệ",
-        description: "Mã bắt đầu bằng 'POINTS' được dành riêng cho hệ thống tích điểm.",
+        description:
+          "Mã bắt đầu bằng 'POINTS' được dành riêng cho hệ thống tích điểm.",
         variant: "destructive",
       });
       return;
@@ -97,12 +99,13 @@ export default function Coupons() {
     ) {
       toast({
         title: "Thời gian không hợp lệ",
-        description: "Ngày kết thúc (Valid Until) phải sau ngày bắt đầu (Valid From).",
+        description:
+          "Ngày kết thúc (Valid Until) phải sau ngày bắt đầu (Valid From).",
         variant: "destructive",
       });
       return;
     }
-    e.preventDefault();
+
     const payload = {
       ...formData,
       storeId: store.id,
@@ -324,10 +327,12 @@ export default function Coupons() {
                   <TableCell>
                     {coupon.discountType === "PERCENTAGE"
                       ? `${coupon.discountValue}%`
-                      : `đ${coupon.discountValue}`}
+                      : `₫${Math.round(Number(coupon.discountValue || 0)).toLocaleString("vi-VN")}`}
                   </TableCell>
                   <TableCell>
-                    {coupon.minOrderValue ? `đ${coupon.minOrderValue}` : "None"}
+                    {coupon.minOrderValue
+                      ? `₫${Math.round(Number(coupon.minOrderValue)).toLocaleString("vi-VN")}`
+                      : "None"}
                   </TableCell>
                   <TableCell>
                     {coupon.validUntil

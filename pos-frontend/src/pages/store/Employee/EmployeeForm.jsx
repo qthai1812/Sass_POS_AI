@@ -34,7 +34,7 @@ const EmployeeForm = ({ initialData, onSubmit, roles }) => {
         role: Yup.string().required("Role is required"),
         branchId: Yup.string().when("role", {
           is: (role) =>
-            role === "ROLE_BRANCH_MANAGER" || role === "ROLE_BRANCH_CASHIER",
+            role === "ROLE_BRANCH_MANAGER" || role === "ROLE_CASHIER",
           then: (schema) => schema.required("Branch is required"),
           otherwise: (schema) => schema.notRequired(),
         }),
@@ -158,7 +158,7 @@ const EmployeeForm = ({ initialData, onSubmit, roles }) => {
               formik.setFieldValue("role", value);
               if (
                 value !== "ROLE_BRANCH_MANAGER" &&
-                value !== "ROLE_BRANCH_CASHIER"
+                value !== "ROLE_CASHIER"
               ) {
                 formik.setFieldValue("branchId", "");
               }
@@ -182,7 +182,7 @@ const EmployeeForm = ({ initialData, onSubmit, roles }) => {
           ) : null}
         </div>
         {(formik.values.role === "ROLE_BRANCH_MANAGER" ||
-          formik.values.role === "ROLE_BRANCH_CASHIER") && (
+          formik.values.role === "ROLE_CASHIER") && (
           <div className="space-y-2">
             <Label htmlFor="branchId">Branch</Label>
             <Select

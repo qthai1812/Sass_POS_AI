@@ -73,9 +73,8 @@ public class PlanLimitChecker {
         if (store == null) return false;
         Optional<SubscriptionPlan> plan = activePlan(store);
         if (plan.isEmpty()) {
-            // Khi chưa có gói hoặc gói hết hạn: chỉ cho phép tính năng tồn kho cơ bản (INVENTORY),
-            // khóa toàn bộ tính năng cao cấp (AI_COPILOT, ADVANCED_REPORTS, MULTI_LOCATION,...)
-            return feature == PlanFeature.INVENTORY;
+            // Khi chưa có gói hoặc gói hết hạn: khóa toàn bộ tính năng phân hệ (bao gồm cả INVENTORY)
+            return false;
         }
         return feature.isEnabledIn(plan.get());
     }
@@ -207,9 +206,7 @@ public class PlanLimitChecker {
 
         Map<String, Boolean> features = new LinkedHashMap<>();
         for (PlanFeature f : PlanFeature.values()) {
-            boolean enabled = plan.isPresent()
-                    ? f.isEnabledIn(plan.get())
-                    : (f == PlanFeature.INVENTORY);
+            boolean enabled = plan.isPresent() && f.isEnabledIn(plan.get());
             features.put(f.getKey(), enabled);
         }
 

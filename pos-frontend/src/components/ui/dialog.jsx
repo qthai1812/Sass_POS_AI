@@ -33,14 +33,14 @@ function DialogOverlay({ className, ...props }) {
   );
 }
 
-function DialogContent({ className, children, ...props }) {
+function DialogContent({ className, overlayClassName, children, ...props }) {
   const hasCustomMaxWidth =
     typeof className === "string" &&
     /(^|\s)(sm:|md:|lg:|xl:|2xl:)?max-w-/.test(className);
 
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         aria-describedby={undefined}
@@ -52,7 +52,7 @@ function DialogContent({ className, children, ...props }) {
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-3.5 right-3.5 sm:top-4 sm:right-4 rounded-md p-1 opacity-70 transition-opacity hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
+        <DialogPrimitive.Close className="no-print ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-3.5 right-3.5 sm:top-4 sm:right-4 rounded-md p-1 opacity-70 transition-opacity hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
           <XIcon />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>

@@ -53,8 +53,8 @@ const OrderDetailsDialog = ({
                 </div>
                 <div>
                   <strong>Amount:</strong>{" "}
-                  {selectedOrder.totalAmount
-                    ? `đ${selectedOrder.totalAmount}`
+                  {selectedOrder.totalAmount != null
+                    ? `₫${Math.round(Number(selectedOrder.totalAmount)).toLocaleString("vi-VN")}`
                     : "-"}
                 </div>
               </div>

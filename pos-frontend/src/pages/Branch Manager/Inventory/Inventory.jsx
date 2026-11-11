@@ -183,14 +183,18 @@ const Inventory = () => {
             p.sku?.toLowerCase() === skuOrId.toLowerCase(),
         );
         if (matchedProduct) {
-          await dispatch(
-            createInventory({
-              branchId: branch.id,
-              productId: matchedProduct.id,
-              quantity: qty,
-            }),
-          );
-          importedCount++;
+          try {
+            await dispatch(
+              createInventory({
+                branchId: branch.id,
+                productId: matchedProduct.id,
+                quantity: qty,
+              }),
+            ).unwrap();
+            importedCount++;
+          } catch {
+            // ignore row failure during bulk import
+          }
         }
       }
 
@@ -219,7 +223,9 @@ const Inventory = () => {
           `${r.id},${r.productId},"${r.sku}","${(r.name || "").replace(/"/g, '""')}","${r.category}",${r.quantity}`,
       )
       .join("\n");
-    const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["\uFEFF" + header + rows], {
+      type: "text/csv;charset=utf-8;",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

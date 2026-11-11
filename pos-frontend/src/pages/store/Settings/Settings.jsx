@@ -12,6 +12,21 @@ import {
   SettingsContent,
 } from "./components";
 
+const DEFAULT_NOTIFICATION_SETTINGS = {
+  emailNotifications: false,
+  smsNotifications: false,
+  lowStockAlerts: false,
+  salesReports: false,
+  employeeActivity: false,
+};
+
+const DEFAULT_SECURITY_SETTINGS = {
+  twoFactorAuth: false,
+  passwordExpiry: "90",
+  sessionTimeout: "30",
+  ipRestriction: false,
+};
+
 export default function Settings() {
   const dispatch = useDispatch();
   const { store } = useSelector((state) => state.store);
@@ -31,21 +46,6 @@ export default function Settings() {
     receiptFooter: "Cảm ơn quý khách đã mua hàng!",
   });
 
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailNotifications: true,
-    smsNotifications: false,
-    lowStockAlerts: true,
-    salesReports: true,
-    employeeActivity: true,
-  });
-
-  const [securitySettings, setSecuritySettings] = useState({
-    twoFactorAuth: false,
-    passwordExpiry: "90",
-    sessionTimeout: "30",
-    ipRestriction: false,
-  });
-
   const [paymentSettings, setPaymentSettings] = useState({
     acceptCash: true,
     acceptMomo: true,
@@ -62,31 +62,14 @@ export default function Settings() {
   const [activeSection, setActiveSection] = useState("store-settings");
 
   useEffect(() => {
-    const savedPrefs = localStorage.getItem("pos_store_preferences");
-    if (savedPrefs) {
-      try {
-        const parsed = JSON.parse(savedPrefs);
-        if (parsed.notificationSettings)
-          setNotificationSettings(parsed.notificationSettings);
-        if (parsed.securitySettings)
-          setSecuritySettings(parsed.securitySettings);
-        if (parsed.paymentSettings)
-          setPaymentSettings((prev) => ({
-            ...prev,
-            ...parsed.paymentSettings,
-          }));
-      } catch {
-        // Ignore invalid JSON in localStorage
-      }
-    }
-
     const fetchStoreData = async () => {
       try {
-        if (userProfile?.role === "ROLE_STORE_MANAGER") {
-          await dispatch(getStoreByEmployee()).unwrap();
-        } else {
-          await dispatch(getStoreByAdmin()).unwrap();
-        }
+        const isOwnerOrAdmin =
+          userProfile?.role === "ROLE_STORE_OWNER" ||
+          userProfile?.role === "ROLE_SUPER_ADMIN";
+        await dispatch(
+          isOwnerOrAdmin ? getStoreByAdmin() : getStoreByEmployee(),
+        ).unwrap();
       } catch (err) {
         toast({
           title: "Error",
@@ -101,7 +84,8 @@ export default function Settings() {
 
   useEffect(() => {
     if (store) {
-      setStoreSettings({
+      setStoreSettings((prev) => ({
+        ...prev,
         storeName: store.brand || "",
         storeEmail: store.contact?.email || "",
         storePhone: store.contact?.phone || "",
@@ -115,7 +99,7 @@ export default function Settings() {
         timezone: store.timezone || "Asia/Ho_Chi_Minh",
         dateFormat: store.dateFormat || "DD/MM/YYYY",
         receiptFooter: store.receiptFooter || "Cảm ơn quý khách đã mua hàng!",
-      });
+      }));
 
       if (store.paymentInfo) {
         setPaymentSettings((prev) => ({
@@ -139,80 +123,67 @@ export default function Settings() {
     setStoreSettings((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleNotificationSettingsChange = (name, value) => {
-    setNotificationSettings((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSecuritySettingsChange = (name, value) => {
-    setSecuritySettings((prev) => ({ ...prev, [name]: value }));
-  };
-
   const handlePaymentSettingsChange = (name, value) => {
     setPaymentSettings((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSaveAll = async () => {
-    localStorage.setItem(
-      "pos_store_preferences",
-      JSON.stringify({
-        notificationSettings,
-        securitySettings,
-        paymentSettings,
-      }),
-    );
-
-    if (store?.id) {
-      const parsedTax = parseFloat(storeSettings.taxRate);
-      try {
-        await dispatch(
-          updateStore({
-            id: store.id,
-            storeData: {
-              brand: storeSettings.storeName,
-              description: storeSettings.storeDescription,
-              storeType: store.storeType || "Retail Store",
-              currency: storeSettings.currency || "VND",
-              taxRate: Number.isFinite(parsedTax)
-                ? Math.max(0, parsedTax)
-                : 10,
-              timezone: storeSettings.timezone || "Asia/Ho_Chi_Minh",
-              dateFormat: storeSettings.dateFormat || "DD/MM/YYYY",
-              receiptFooter: storeSettings.receiptFooter || "",
-              contact: {
-                email: storeSettings.storeEmail,
-                phone: storeSettings.storePhone,
-                address: storeSettings.storeAddress,
-              },
-              paymentInfo: {
-                acceptCash: paymentSettings.acceptCash,
-                acceptMomo: paymentSettings.acceptMomo,
-                acceptCard: paymentSettings.acceptCard,
-                momoPhone: paymentSettings.momoPhone?.trim() || "",
-                momoOwnerName: paymentSettings.momoOwnerName?.trim() || "",
-                momoQrImage: paymentSettings.momoQrImage?.trim() || "",
-                cardBankName: paymentSettings.cardBankName?.trim() || "",
-                cardNumber: paymentSettings.cardNumber?.trim() || "",
-                cardHolderName: paymentSettings.cardHolderName?.trim() || "",
-                cardExpiry: paymentSettings.cardExpiry?.trim() || "",
-              },
-            },
-          }),
-        ).unwrap();
-      } catch (err) {
-        toast({
-          title: "Lỗi lưu cấu hình cửa hàng",
-          description: err || "Không thể cập nhật thông tin lên máy chủ.",
-          variant: "destructive",
-        });
-        return;
-      }
+    if (!store?.id) {
+      toast({
+        title: "Không tìm thấy cửa hàng",
+        description: "Chưa tải được thông tin cửa hàng để lưu lên máy chủ.",
+        variant: "destructive",
+      });
+      return;
     }
 
-    toast({
-      title: "Đã lưu cấu hình thành công!",
-      description:
-        "Thông tin cửa hàng, thuế VAT và tài khoản nhận tiền (MoMo QR / Thẻ Visa) đã được đồng bộ cho mọi quầy thu ngân.",
-    });
+    const parsedTax = parseFloat(storeSettings.taxRate);
+    try {
+      await dispatch(
+        updateStore({
+          id: store.id,
+          storeData: {
+            brand: storeSettings.storeName,
+            description: storeSettings.storeDescription,
+            storeType: store.storeType || "Retail Store",
+            currency: storeSettings.currency || "VND",
+            taxRate: Number.isFinite(parsedTax) ? Math.max(0, parsedTax) : 10,
+            timezone: storeSettings.timezone || "Asia/Ho_Chi_Minh",
+            dateFormat: storeSettings.dateFormat || "DD/MM/YYYY",
+            receiptFooter: storeSettings.receiptFooter || "",
+            contact: {
+              email: storeSettings.storeEmail,
+              phone: storeSettings.storePhone,
+              address: storeSettings.storeAddress,
+            },
+            paymentInfo: {
+              acceptCash: paymentSettings.acceptCash,
+              acceptMomo: paymentSettings.acceptMomo,
+              acceptCard: paymentSettings.acceptCard,
+              momoPhone: paymentSettings.momoPhone?.trim() || "",
+              momoOwnerName: paymentSettings.momoOwnerName?.trim() || "",
+              momoQrImage: paymentSettings.momoQrImage?.trim() || "",
+              cardBankName: paymentSettings.cardBankName?.trim() || "",
+              cardNumber: paymentSettings.cardNumber?.trim() || "",
+              cardHolderName: paymentSettings.cardHolderName?.trim() || "",
+              cardExpiry: paymentSettings.cardExpiry?.trim() || "",
+            },
+          },
+        }),
+      ).unwrap();
+
+      toast({
+        title: "Đã lưu cấu hình thành công!",
+        description:
+          "Thông tin cửa hàng, thuế VAT và tài khoản nhận tiền (MoMo QR / Thẻ Visa) đã được đồng bộ cho mọi quầy thu ngân.",
+      });
+    } catch (err) {
+      toast({
+        title: "Lỗi lưu cấu hình cửa hàng",
+        description: err || "Không thể cập nhật thông tin lên máy chủ.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -230,12 +201,12 @@ export default function Settings() {
         <div className="md:col-span-2">
           <SettingsContent
             storeSettings={storeSettings}
-            notificationSettings={notificationSettings}
-            securitySettings={securitySettings}
+            notificationSettings={DEFAULT_NOTIFICATION_SETTINGS}
+            securitySettings={DEFAULT_SECURITY_SETTINGS}
             paymentSettings={paymentSettings}
             onStoreSettingsChange={handleStoreSettingsChange}
-            onNotificationSettingsChange={handleNotificationSettingsChange}
-            onSecuritySettingsChange={handleSecuritySettingsChange}
+            onNotificationSettingsChange={() => {}}
+            onSecuritySettingsChange={() => {}}
             onPaymentSettingsChange={handlePaymentSettingsChange}
             onSaveAll={handleSaveAll}
           />

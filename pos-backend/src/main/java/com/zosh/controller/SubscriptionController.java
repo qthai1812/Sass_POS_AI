@@ -20,6 +20,7 @@ public class SubscriptionController {
     private final SubscriptionService subscriptionService;
 
     // POST /api/subscriptions/subscribe?storeId=&planId=&gateway=&transactionId=
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @PostMapping("/subscribe")
     public ResponseEntity<SubscriptionDTO> subscribe(
             @RequestParam Long storeId,
@@ -30,6 +31,7 @@ public class SubscriptionController {
     }
 
     // POST /api/subscriptions/upgrade?storeId=&planId=&gateway=&transactionId=
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @PostMapping("/upgrade")
     public ResponseEntity<SubscriptionDTO> upgrade(
             @RequestParam Long storeId,
@@ -40,20 +42,21 @@ public class SubscriptionController {
     }
 
     // PUT /api/subscriptions/{id}/activate
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @PutMapping("/{id}/activate")
     public ResponseEntity<SubscriptionDTO> activate(@PathVariable Long id) throws Exception {
         return ResponseEntity.ok(subscriptionService.activate(id));
     }
 
     // PUT /api/subscriptions/{id}/cancel
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'STORE_OWNER')")
     @PutMapping("/{id}/cancel")
     public ResponseEntity<SubscriptionDTO> cancel(@PathVariable Long id) throws Exception {
         return ResponseEntity.ok(subscriptionService.cancel(id));
     }
 
     // PUT /api/subscriptions/{id}/payment-status?status=
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @PutMapping("/{id}/payment-status")
     public ResponseEntity<SubscriptionDTO> updatePaymentStatus(
             @PathVariable Long id,
@@ -62,12 +65,14 @@ public class SubscriptionController {
     }
 
     // GET /api/subscriptions/entitlements  (quyền lợi của gói hiện hành cho cửa hàng của người dùng đăng nhập)
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/entitlements")
     public ResponseEntity<PlanEntitlementsDTO> getMyEntitlements() throws Exception {
         return ResponseEntity.ok(subscriptionService.getMyEntitlements());
     }
 
     // GET /api/subscriptions/store/{storeId}?status=
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'STORE_OWNER')")
     @GetMapping("/store/{storeId}")
     public ResponseEntity<List<SubscriptionDTO>> getStoreSubscriptions(
             @PathVariable Long storeId,
@@ -76,7 +81,7 @@ public class SubscriptionController {
     }
 
     // GET /api/subscriptions/admin?status=
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @GetMapping("/admin")
     public ResponseEntity<List<SubscriptionDTO>> getAllSubscriptions(
             @RequestParam(required = false) SubscriptionStatus status) throws Exception {
@@ -84,7 +89,7 @@ public class SubscriptionController {
     }
 
     // GET /api/subscriptions/admin/expiring?days=7
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @GetMapping("/admin/expiring")
     public ResponseEntity<List<SubscriptionDTO>> getExpiringSubscriptions(
             @RequestParam(defaultValue = "7") int days) throws Exception {
@@ -92,7 +97,7 @@ public class SubscriptionController {
     }
 
     // GET /api/subscriptions/admin/count?status=
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @GetMapping("/admin/count")
     public ResponseEntity<Long> countByStatus(
             @RequestParam SubscriptionStatus status) throws Exception {

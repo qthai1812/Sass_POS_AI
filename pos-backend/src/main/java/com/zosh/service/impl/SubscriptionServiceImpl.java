@@ -1,6 +1,7 @@
 package com.zosh.service.impl;
 
 import com.zosh.domain.PaymentGateway;
+import com.zosh.domain.StoreStatus;
 import com.zosh.domain.SubscriptionStatus;
 import com.zosh.domain.UserRole;
 import com.zosh.modal.Store;
@@ -45,20 +46,19 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     private void assertSuperAdmin() throws Exception {
         User user = userService.getCurrentUser();
-        if (user == null || user.getRole() != UserRole.ROLE_ADMIN) {
+        if (user == null || user.getRole() != UserRole.ROLE_SUPER_ADMIN) {
             throw new AccessDeniedException("Super Admin privilege is required");
         }
     }
 
-    /** Chỉ Admin hệ thống, chủ cửa hàng hoặc STORE_ADMIN của chính cửa hàng đó mới được thao tác gói cước. */
+    /** Chỉ Super Admin hoặc Chủ cửa hàng (ROLE_STORE_OWNER) của chính cửa hàng đó mới được thao tác gói cước. */
     private void assertCanBillStore(Store store) throws Exception {
         User user = userService.getCurrentUser();
-        if (user.getRole() == UserRole.ROLE_ADMIN) return;
+        if (user.getRole() == UserRole.ROLE_SUPER_ADMIN) return;
         boolean isOwner = store.getStoreAdmin() != null && store.getStoreAdmin().getId().equals(user.getId());
-        boolean isStoreLevelAdminOrManager = (user.getRole() == UserRole.ROLE_STORE_ADMIN
-                || user.getRole() == UserRole.ROLE_STORE_MANAGER)
+        boolean isStoreOwner = user.getRole() == UserRole.ROLE_STORE_OWNER
                 && user.getStore() != null && user.getStore().getId().equals(store.getId());
-        if (!isOwner && !isStoreLevelAdminOrManager) {
+        if (!isOwner && !isStoreOwner) {
             throw new AccessDeniedException("You do not have permission to manage subscriptions of this store");
         }
     }
@@ -95,8 +95,17 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         User currentUser = userService.getCurrentUser();
         assertCanBillStore(store);
 
+        if (currentUser.getRole() != UserRole.ROLE_SUPER_ADMIN) {
+            if (store.getStatus() == StoreStatus.BLOCKED) {
+                throw new Exception("Cửa hàng đang bị tạm khóa (BLOCKED) và không thể đăng ký/nâng cấp gói cước.");
+            }
+            if (store.getStatus() == StoreStatus.PENDING || store.getStatus() == StoreStatus.REJECTED) {
+                throw new Exception("Cửa hàng đang chờ Super Admin phê duyệt nên chưa thể mua hoặc nâng cấp gói cước.");
+            }
+        }
+
         SubscriptionPlan matchedPlan = resolvePlan(planId);
-        if (matchedPlan == null && currentUser.getRole() != UserRole.ROLE_ADMIN) {
+        if (matchedPlan == null && currentUser.getRole() != UserRole.ROLE_SUPER_ADMIN) {
             throw new IllegalArgumentException("Valid subscription plan ID is required");
         }
         if (matchedPlan != null && Boolean.FALSE.equals(matchedPlan.getActive())) {
@@ -109,7 +118,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         String verifiedTxId = transactionId != null ? transactionId.trim() : null;
 
         // Xác minh giao dịch thanh toán thực tế với PaymentGatewayService cho mọi gói trả phí (chống bypass kích hoạt miễn phí)
-        if (amount > 0 && currentUser.getRole() != UserRole.ROLE_ADMIN) {
+        if (amount > 0 && currentUser.getRole() != UserRole.ROLE_SUPER_ADMIN) {
             if (verifiedTxId == null || verifiedTxId.isEmpty()) {
                 throw new AccessDeniedException("Payment transactionId is required for paid subscription plan");
             }
@@ -117,8 +126,20 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 throw new AccessDeniedException("Payment transactionId has already been used: " + verifiedTxId);
             }
             paymentGatewayService.verifyAndConsumeSubscriptionPayment(verifiedTxId, amount);
-        } else if (verifiedTxId == null || verifiedTxId.isEmpty()) {
-            verifiedTxId = "FREE-" + System.currentTimeMillis();
+        } else {
+            if (currentUser.getRole() != UserRole.ROLE_SUPER_ADMIN) {
+                boolean alreadyUsedFreePlan = subscriptionRepository.findByStoreId(storeId).stream()
+                        .anyMatch(s -> (s.getAmount() == null || s.getAmount() <= 0)
+                                && s.getStatus() != SubscriptionStatus.PENDING);
+                if (alreadyUsedFreePlan) {
+                    throw new com.zosh.exceptions.UserException(
+                            "Mỗi cửa hàng chỉ được đăng ký gói dùng thử / miễn phí (0₫) một lần duy nhất. Vui lòng chọn gói trả phí để gia hạn."
+                    );
+                }
+            }
+            if (verifiedTxId == null || verifiedTxId.isEmpty()) {
+                verifiedTxId = "FREE-" + System.currentTimeMillis();
+            }
         }
 
         // Hủy cả các gói ACTIVE lẫn TRIAL cũ của cửa hàng trước khi kích hoạt gói mới
@@ -163,6 +184,14 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         Subscription sub = subscriptionRepository.findById(subscriptionId)
                 .orElseThrow(() -> new Exception("Subscription not found: " + subscriptionId));
 
+        SubscriptionPlan matchedPlan = resolvePlan(sub.getPlanId());
+        if (matchedPlan != null) {
+            if (Boolean.FALSE.equals(matchedPlan.getActive())) {
+                throw new Exception("Subscription plan is no longer available: " + matchedPlan.getName());
+            }
+            planLimitChecker.assertCanSwitchTo(sub.getStore(), matchedPlan);
+        }
+
         // Mỗi cửa hàng chỉ được có tối đa 1 gói hiệu lực: hủy các gói ACTIVE và TRIAL khác trước khi kích hoạt
         List<Subscription> others = subscriptionRepository
                 .findByStoreIdAndStatusIn(sub.getStore().getId(), ACTIVE_OR_TRIAL);
@@ -177,15 +206,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         LocalDateTime now = LocalDateTime.now();
         sub.setStartDate(now);
 
-        boolean isYearly = false;
-        if (sub.getPlanId() != null) {
-            try {
-                Long numericPlanId = Long.parseLong(sub.getPlanId().trim());
-                isYearly = subscriptionPlanRepository.findById(numericPlanId)
-                        .map(p -> "YEARLY".equalsIgnoreCase(p.getBillingCycle()))
-                        .orElse(false);
-            } catch (NumberFormatException ignored) {}
-        }
+        boolean isYearly = matchedPlan != null && "YEARLY".equalsIgnoreCase(matchedPlan.getBillingCycle());
         sub.setEndDate(isYearly ? now.plusYears(1) : now.plusMonths(1));
         return toDTO(subscriptionRepository.save(sub));
     }
@@ -249,7 +270,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 .orElseThrow(() -> new Exception("Store not found: " + storeId));
         User user = userService.getCurrentUser();
         boolean sameStore = user.getStore() != null && user.getStore().getId().equals(storeId);
-        if (user.getRole() != UserRole.ROLE_ADMIN && !sameStore
+        if (user.getRole() != UserRole.ROLE_SUPER_ADMIN && !sameStore
                 && !(store.getStoreAdmin() != null && store.getStoreAdmin().getId().equals(user.getId()))) {
             throw new AccessDeniedException("You do not have permission to view subscriptions of this store");
         }

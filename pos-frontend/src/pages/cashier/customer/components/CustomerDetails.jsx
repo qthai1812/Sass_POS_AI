@@ -68,10 +68,12 @@ const CustomerDetails = ({ customer, onAddPoints, loading = false }) => {
           <p className="text-muted-foreground">{customer.phone || "N/A"}</p>
           <p className="text-muted-foreground">{customer.email || "N/A"}</p>
         </div>
-        <Button onClick={onAddPoints} className="flex items-center gap-2">
-          <PlusIcon className="h-4 w-4" />
-          Add Points
-        </Button>
+        {onAddPoints && (
+          <Button onClick={onAddPoints} className="flex items-center gap-2">
+            <PlusIcon className="h-4 w-4" />
+            Add Points
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -89,6 +91,9 @@ const CustomerDetails = ({ customer, onAddPoints, loading = false }) => {
             <p className="text-xs text-amber-600 font-medium mt-1">
               Quy đổi: {(pts * 1000).toLocaleString("vi-VN")}₫
             </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Điểm tích lũy &amp; Hạng thành viên áp dụng toàn chuỗi
+            </p>
           </CardContent>
         </Card>
 
@@ -102,6 +107,9 @@ const CustomerDetails = ({ customer, onAddPoints, loading = false }) => {
             <span className="text-2xl font-bold">
               {customer.totalOrders || 0}
             </span>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Đơn hàng tại chi nhánh hiện tại
+            </p>
           </CardContent>
         </Card>
 
@@ -115,6 +123,9 @@ const CustomerDetails = ({ customer, onAddPoints, loading = false }) => {
             <span className="text-2xl font-bold">
               ₫{Number(customer.totalSpent || 0).toLocaleString("vi-VN")}
             </span>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Chi tiêu tại chi nhánh hiện tại
+            </p>
           </CardContent>
         </Card>
       </div>

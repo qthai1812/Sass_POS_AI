@@ -2,7 +2,7 @@ import React from "react";
 import { Card, CardContent } from "../../../../components/ui/card";
 import { formatDate, getPaymentModeLabel } from "../data";
 
-const OrderInformation = ({ selectedOrder }) => {
+const OrderInformation = ({ selectedOrder, printItemizedTax = true }) => {
   const taxPctLabel =
     selectedOrder.subTotal > 0 && selectedOrder.taxAmount > 0
       ? ` (${Math.round((selectedOrder.taxAmount / selectedOrder.subTotal) * 100)}%)`
@@ -30,7 +30,9 @@ const OrderInformation = ({ selectedOrder }) => {
             </div>
           )}
           {selectedOrder.taxAmount > 0 && (
-            <div className="flex justify-between">
+            <div
+              className={`flex justify-between ${printItemizedTax ? "" : "no-print"}`}
+            >
               <span className="text-muted-foreground">Tax{taxPctLabel}:</span>
               <span>
                 ₫{Number(selectedOrder.taxAmount || 0).toLocaleString("vi-VN")}

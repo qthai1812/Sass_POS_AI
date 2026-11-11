@@ -4,7 +4,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "@/components/ui/use-toast";
 import {
   getStoreByAdmin,
-  getStoreByEmployee,
   updateStore,
 } from "@/Redux Toolkit/features/store/storeThunks";
 import {
@@ -24,15 +23,12 @@ export default function Stores() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [storeData, setStoreData] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [submittingStore, setSubmittingStore] = useState(false);
 
   const fetchStoreData = useCallback(async () => {
     setRefreshing(true);
     try {
-      if (userProfile?.role === "ROLE_STORE_MANAGER") {
-        await dispatch(getStoreByEmployee()).unwrap();
-      } else {
-        await dispatch(getStoreByAdmin()).unwrap();
-      }
+      await dispatch(getStoreByAdmin()).unwrap();
     } catch (err) {
       toast({
         title: "Error",
@@ -42,7 +38,7 @@ export default function Stores() {
     } finally {
       setRefreshing(false);
     }
-  }, [dispatch, userProfile?.role]);
+  }, [dispatch]);
 
   useEffect(() => {
     if (userProfile?.id) {
@@ -57,6 +53,7 @@ export default function Stores() {
   }, [store]);
 
   const handleEditStore = async (values, { setSubmitting, resetForm }) => {
+    setSubmittingStore(true);
     try {
       await dispatch(
         updateStore({
@@ -80,6 +77,7 @@ export default function Stores() {
       });
     } finally {
       setSubmitting(false);
+      setSubmittingStore(false);
     }
   };
 
@@ -116,7 +114,7 @@ export default function Stores() {
         onOpenChange={setEditDialogOpen}
         initialValues={getInitialValues(storeData)}
         onSubmit={handleEditStore}
-        isSubmitting={false}
+        isSubmitting={submittingStore}
       />
     </div>
   );

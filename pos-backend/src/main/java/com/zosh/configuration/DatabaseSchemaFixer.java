@@ -74,7 +74,10 @@ public class DatabaseSchemaFixer implements ApplicationRunner {
             }
         }
 
-        jdbcTemplate.update("UPDATE `user` SET `role` = 'ROLE_ADMIN' WHERE (`role` = '' OR `role` IS NULL) AND `email` = 'admin@pos.com'");
+        jdbcTemplate.update("UPDATE `user` SET `role` = 'ROLE_SUPER_ADMIN' WHERE `role` = 'ROLE_ADMIN'");
+        jdbcTemplate.update("UPDATE `user` SET `role` = 'ROLE_STORE_OWNER' WHERE `role` IN ('ROLE_STORE_ADMIN', 'ROLE_STORE_MANAGER')");
+        jdbcTemplate.update("UPDATE `user` SET `role` = 'ROLE_CASHIER' WHERE `role` = 'ROLE_BRANCH_CASHIER'");
+        jdbcTemplate.update("UPDATE `user` SET `role` = 'ROLE_SUPER_ADMIN' WHERE (`role` = '' OR `role` IS NULL) AND `email` = 'admin@pos.com'");
 
         try {
             jdbcTemplate.execute("ALTER TABLE `user` ADD COLUMN `login_access` BIT(1) DEFAULT b'1'");

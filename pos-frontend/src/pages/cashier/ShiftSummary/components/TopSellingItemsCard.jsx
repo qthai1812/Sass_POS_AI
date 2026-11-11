@@ -7,7 +7,7 @@ const TopSellingItemsCard = ({ shiftData }) => {
       <CardContent className="p-6">
         <h2 className="text-xl font-semibold mb-4">Top Selling Items</h2>
         <div className="space-y-3">
-          {shiftData.topSellingProducts?.map((item, index) => (
+          {shiftData.topSellingProducts?.length > 0 ? shiftData.topSellingProducts.map((item, index) => (
             <div key={item.id} className="flex items-center">
               <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mr-3 text-xs font-medium">
                 {index + 1}
@@ -24,7 +24,9 @@ const TopSellingItemsCard = ({ shiftData }) => {
                 </div>
               </div>
             </div>
-          ))}
+          )) : (
+            <p className="text-sm text-muted-foreground">No sold items recorded during this shift yet.</p>
+          )}
         </div>
       </CardContent>
     </Card>

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 const LogoutConfirmDialog = ({ isOpen, onClose, onConfirm }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="no-print" overlayClassName="no-print">
         <DialogHeader>
           <DialogTitle>End Shift & Logout</DialogTitle>
         </DialogHeader>

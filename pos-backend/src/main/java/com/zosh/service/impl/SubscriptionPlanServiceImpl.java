@@ -32,7 +32,7 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
     private void assertSuperAdmin() {
         try {
             User current = userService.getCurrentUser();
-            if (current == null || current.getRole() != UserRole.ROLE_ADMIN) {
+            if (current == null || current.getRole() != UserRole.ROLE_SUPER_ADMIN) {
                 throw new AccessDeniedException("Super Admin privilege is required to manage subscription plans");
             }
         } catch (AccessDeniedException ade) {
@@ -52,11 +52,10 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         if (dto.getBillingCycle() == null || !BILLING_CYCLES.contains(dto.getBillingCycle().toUpperCase())) {
             throw new IllegalArgumentException("Billing cycle must be MONTHLY or YEARLY");
         }
-        if (dto.getMaxBranches() == null || dto.getMaxBranches() < 1
-                || dto.getMaxUsers() == null || dto.getMaxUsers() < 1
-                || dto.getMaxProducts() == null || dto.getMaxProducts() < 1) {
-            throw new IllegalArgumentException("Branches, users and products limits must be at least 1");
-        }
+    }
+
+    private Integer normalizeLimit(Integer val) {
+        return (val != null && val > 0) ? val : null;
     }
 
     private static boolean flag(Boolean value) {
@@ -84,9 +83,9 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         plan.setName(dto.getName());
         plan.setPrice(dto.getPrice());
         plan.setBillingCycle(dto.getBillingCycle().toUpperCase());
-        plan.setMaxBranches(dto.getMaxBranches());
-        plan.setMaxUsers(dto.getMaxUsers());
-        plan.setMaxProducts(dto.getMaxProducts());
+        plan.setMaxBranches(normalizeLimit(dto.getMaxBranches()));
+        plan.setMaxUsers(normalizeLimit(dto.getMaxUsers()));
+        plan.setMaxProducts(normalizeLimit(dto.getMaxProducts()));
         if (dto.getActive() != null) {
             plan.setActive(dto.getActive());
         }
@@ -100,7 +99,7 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         plan.setMultiLocation(flag(dto.getMultiLocation()));
         plan.setAiCopilot(flag(dto.getAiCopilot()));
         plan.setDescription(dto.getDescription());
-        plan.setExtraFeatures(new java.util.ArrayList<>());
+        plan.setExtraFeatures(dto.getExtraFeatures() != null ? new java.util.ArrayList<>(dto.getExtraFeatures()) : new java.util.ArrayList<>());
 
         SubscriptionPlan updated = subscriptionPlanRepository.save(plan);
         return toDTO(updated);
@@ -167,9 +166,9 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 .name(dto.getName())
                 .price(dto.getPrice())
                 .billingCycle(dto.getBillingCycle().toUpperCase())
-                .maxBranches(dto.getMaxBranches())
-                .maxUsers(dto.getMaxUsers())
-                .maxProducts(dto.getMaxProducts())
+                .maxBranches(normalizeLimit(dto.getMaxBranches()))
+                .maxUsers(normalizeLimit(dto.getMaxUsers()))
+                .maxProducts(normalizeLimit(dto.getMaxProducts()))
                 .active(dto.getActive() != null ? dto.getActive() : true)
                 .advancedReports(flag(dto.getAdvancedReports()))
                 .inventory(flag(dto.getInventory()))
@@ -180,7 +179,7 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 .multiLocation(flag(dto.getMultiLocation()))
                 .aiCopilot(flag(dto.getAiCopilot()))
                 .description(dto.getDescription())
-                .extraFeatures(new java.util.ArrayList<>())
+                .extraFeatures(dto.getExtraFeatures() != null ? new java.util.ArrayList<>(dto.getExtraFeatures()) : new java.util.ArrayList<>())
                 .build();
     }
 }

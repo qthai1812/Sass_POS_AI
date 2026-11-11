@@ -44,8 +44,8 @@ const OrderTable = ({ handleSelectOrder }) => {
   }, [orders, searchQuery]);
 
   return (
-    <div className="w-full p-4 flex flex-col">
-      <div className="mb-4 max-w-md relative">
+    <div className="w-full p-4 flex flex-col min-h-0">
+      <div className="mb-4 max-w-md relative shrink-0">
         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           type="text"
@@ -56,7 +56,7 @@ const OrderTable = ({ handleSelectOrder }) => {
         />
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-auto">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
             <span>Loading orders...</span>
@@ -88,7 +88,8 @@ const OrderTable = ({ handleSelectOrder }) => {
                   statusUpper === "REFUNDED" ||
                   (orderTotal > 0 && refundedSoFar >= orderTotal - 0.01);
                 const isPartiallyRefunded =
-                  !isFullyRefunded && refundedSoFar > 0;
+                  statusUpper === "PARTIALLY_REFUNDED" ||
+                  (!isFullyRefunded && refundedSoFar > 0);
                 const isCancelled = statusUpper === "CANCELLED";
                 const isPending = statusUpper === "PENDING";
 

@@ -6,6 +6,7 @@ import { BrowserRouter } from "react-router";
 import { Provider } from "react-redux";
 import globleState from "./Redux Toolkit/globleState.js";
 import { Toaster } from "@/components/ui/use-toast";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 
 createRoot(document.getElementById("root")).render(
@@ -20,6 +21,7 @@ createRoot(document.getElementById("root")).render(
         >
           <App />
           <Toaster />
+          <SonnerToaster />
         </ThemeProvider>
       </Provider>
     </BrowserRouter>

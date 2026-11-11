@@ -31,7 +31,7 @@ public class CustomerServiceImpl implements CustomerService {
     private Store resolveCurrentStore() {
         try {
             User user = userService.getCurrentUser();
-            if (user == null || user.getRole() == UserRole.ROLE_ADMIN) {
+            if (user == null || user.getRole() == UserRole.ROLE_SUPER_ADMIN) {
                 return null;
             }
             if (user.getStore() != null) {
@@ -48,8 +48,8 @@ public class CustomerServiceImpl implements CustomerService {
 
     private void assertCustomerBelongsToCurrentStore(Customer customer) throws Exception {
         User user = userService.getCurrentUser();
-        if (user.getRole() == UserRole.ROLE_ADMIN) {
-            return;
+        if (user == null || user.getRole() == UserRole.ROLE_SUPER_ADMIN) {
+            throw new AccessDeniedException("Super Admin does not access store customers");
         }
         Store currentStore = resolveCurrentStore();
         if (currentStore == null) {
@@ -63,24 +63,25 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Customer createCustomer(Customer customer) {
+        customer.setId(null);
+        User currentUser = null;
+        try {
+            currentUser = userService.getCurrentUser();
+        } catch (Exception ignored) {
+        }
+        if (currentUser != null && currentUser.getRole() == UserRole.ROLE_SUPER_ADMIN) {
+            throw new AccessDeniedException("Super Admin does not manage store customers");
+        }
         if (customer.getCreatedAt() == null) {
             customer.setCreatedAt(LocalDateTime.now());
         }
-        if (customer.getLoyaltyPoints() == null || customer.getLoyaltyPoints() < 0) {
+        if (customer.getLoyaltyPoints() == null || customer.getLoyaltyPoints() < 0
+                || (currentUser != null && currentUser.getRole() == UserRole.ROLE_CASHIER)) {
             customer.setLoyaltyPoints(0);
         }
-        if (customer.getStore() == null) {
-            Store currentStore = resolveCurrentStore();
-            if (currentStore == null && customer.getStoreId() != null) {
-                try {
-                    User current = userService.getCurrentUser();
-                    if (current != null && current.getRole() == UserRole.ROLE_ADMIN) {
-                        currentStore = storeRepository.findById(customer.getStoreId()).orElse(null);
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-            customer.setStore(currentStore);
+        Store resolvedStore = resolveCurrentStore();
+        if (resolvedStore != null) {
+            customer.setStore(resolvedStore);
         }
         if (customer.getPhone() != null && !customer.getPhone().trim().isEmpty()) {
             String normalizedPhone = customer.getPhone().trim();
@@ -100,6 +101,11 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Customer updateCustomer(Long id, Customer customer) throws Exception {
+        User current = userService.getCurrentUser();
+        if (current == null
+                || (current.getRole() != UserRole.ROLE_STORE_OWNER && current.getRole() != UserRole.ROLE_BRANCH_MANAGER)) {
+            throw new AccessDeniedException("Chỉ Chủ cửa hàng hoặc Quản lý chi nhánh mới có quyền cập nhật khách hàng");
+        }
         Customer customerToUpdate = customerRepository.findByIdWithLock(id).orElseThrow(
                 () -> new Exception("Customer not found")
         );
@@ -123,7 +129,11 @@ public class CustomerServiceImpl implements CustomerService {
             customerToUpdate.setPhone(normalizedPhone);
         }
         if (customer.getLoyaltyPoints() != null) {
-            customerToUpdate.setLoyaltyPoints(Math.max(0, customer.getLoyaltyPoints()));
+            int requestedPoints = Math.max(0, customer.getLoyaltyPoints());
+            int existingPoints = customerToUpdate.getLoyaltyPoints() != null ? customerToUpdate.getLoyaltyPoints() : 0;
+            if (requestedPoints != existingPoints) {
+                customerToUpdate.setLoyaltyPoints(requestedPoints);
+            }
         }
         customerToUpdate.setUpdatedAt(LocalDateTime.now());
         return customerRepository.save(customerToUpdate);
@@ -132,14 +142,19 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteCustomer(Long id) throws Exception {
+        User current = userService.getCurrentUser();
+        if (current == null || current.getRole() != UserRole.ROLE_STORE_OWNER) {
+            throw new AccessDeniedException("Chỉ Chủ cửa hàng (Store Owner) mới có quyền xóa khách hàng");
+        }
         Customer customerToDelete = customerRepository.findById(id).orElseThrow(
                 () -> new Exception("Customer not found")
         );
         assertCustomerBelongsToCurrentStore(customerToDelete);
         List<Order> customerOrders = orderRepository.findByCustomerId(id);
-        for (Order order : customerOrders) {
-            order.setCustomer(null);
-            orderRepository.save(order);
+        if (!customerOrders.isEmpty()) {
+            throw new IllegalStateException(
+                    "Không thể xóa khách hàng đã phát sinh " + customerOrders.size() + " đơn hàng trong lịch sử"
+            );
         }
         customerRepository.delete(customerToDelete);
     }
@@ -158,8 +173,8 @@ public class CustomerServiceImpl implements CustomerService {
     @Transactional(readOnly = true)
     public List<Customer> getAllCustomers() throws Exception {
         User current = userService.getCurrentUser();
-        if (current != null && current.getRole() == UserRole.ROLE_ADMIN) {
-            return customerRepository.findAll();
+        if (current != null && current.getRole() == UserRole.ROLE_SUPER_ADMIN) {
+            throw new AccessDeniedException("Super Admin does not manage store customers");
         }
         Store currentStore = resolveCurrentStore();
         if (currentStore != null) {
@@ -175,8 +190,8 @@ public class CustomerServiceImpl implements CustomerService {
             return getAllCustomers();
         }
         User current = userService.getCurrentUser();
-        if (current != null && current.getRole() == UserRole.ROLE_ADMIN) {
-            return customerRepository.searchCustomers(keyword.trim());
+        if (current != null && current.getRole() == UserRole.ROLE_SUPER_ADMIN) {
+            throw new AccessDeniedException("Super Admin does not manage store customers");
         }
         Store currentStore = resolveCurrentStore();
         if (currentStore != null) {

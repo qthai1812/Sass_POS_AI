@@ -41,9 +41,14 @@ const CartItem = ({ item, updateCartItemQuantity, removeFromCart }) => {
               </Button>
             </div>
             <div className="text-right">
-              <p className="font-medium">{item.sellingPrice}đ</p>
+              <p className="font-medium">
+                ₫{Math.round(Number(item.sellingPrice || 0)).toLocaleString("vi-VN")}
+              </p>
               <p className="text-sm font-bold text-green-600">
-                {(item.sellingPrice * item.quantity).toFixed(2)}đ
+                ₫
+                {Math.round(
+                  Number(item.sellingPrice || 0) * Number(item.quantity || 1),
+                ).toLocaleString("vi-VN")}
               </p>
             </div>
             <Button

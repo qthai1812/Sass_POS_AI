@@ -1,6 +1,6 @@
 import React from "react";
 import { Badge } from "../../../components/ui/badge";
-import { CheckCircle, Clock, XCircle } from "lucide-react";
+import { CheckCircle, Clock, XCircle, AlertTriangle } from "lucide-react";
 
 const statusConfig = {
   active: {
@@ -14,6 +14,12 @@ const statusConfig = {
     variant: "secondary",
     className: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
     icon: <Clock className="w-3 h-3" />,
+  },
+  rejected: {
+    label: "Rejected",
+    variant: "destructive",
+    className: "bg-orange-100 text-orange-800 hover:bg-orange-100",
+    icon: <AlertTriangle className="w-3 h-3" />,
   },
   blocked: {
     label: "Blocked",
@@ -34,4 +40,4 @@ export default function StoreStatusBadge({ status }) {
       </span>
     </Badge>
   );
-} 
+}

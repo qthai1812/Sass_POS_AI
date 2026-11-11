@@ -20,7 +20,7 @@ import PricingSection from "../pages/common/Landing/PricingSection";
 import Upgrade from "../pages/store/upgrade/Upgrade";
 import Alerts from "../pages/store/Alerts/Alerts";
 import Coupons from "../pages/store/store-admin/Coupons";
-import Customers from "../pages/Branch Manager/Customers/Customers";
+import Customers from "../pages/common/Customers/Customers";
 import FeatureGate from "../components/FeatureGate";
 
 const StoreRoutes = () => {
@@ -32,7 +32,7 @@ const StoreRoutes = () => {
         <Route path="branches" element={<Branches />} />
         <Route path="categories" element={<Categories />} />
         <Route path="employees" element={<StoreEmployees />} />
-        <Route path="customers" element={<Customers />} />
+        <Route path="customers" element={<Customers scope="STORE" />} />
         <Route path="products" element={<Products />} />
         <Route path="stores" element={<Stores />} />
         

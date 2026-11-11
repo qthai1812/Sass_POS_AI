@@ -41,6 +41,19 @@ export default function Transactions() {
     }
   }, [branch?.id, dispatch]);
 
+  const refundedByOrderId = useMemo(() => {
+    const map = new Map();
+    for (const r of refundsByBranch || []) {
+      if (r?.orderId != null) {
+        map.set(
+          r.orderId,
+          (map.get(r.orderId) || 0) + Math.abs(Number(r.amount || 0)),
+        );
+      }
+    }
+    return map;
+  }, [refundsByBranch]);
+
   const filteredTransactions = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return orders;
@@ -59,11 +72,14 @@ export default function Transactions() {
   const totalIncome = useMemo(
     () =>
       filteredTransactions
-        .filter(
-          (t) =>
+        .filter((t) => {
+          const st = String(t.status || "COMPLETED").toUpperCase();
+          return (
             Number(t.totalAmount || 0) > 0 &&
-            String(t.status || "").toUpperCase() !== "CANCELLED",
-        )
+            st !== "CANCELLED" &&
+            st !== "PENDING"
+          );
+        })
         .reduce((sum, t) => sum + Number(t.totalAmount || 0), 0),
     [filteredTransactions],
   );
@@ -113,6 +129,7 @@ export default function Transactions() {
       "Customer",
       "Payment Method",
       "Amount (VND)",
+      "Refunded (VND)",
       "Status",
     ];
     const rows = filteredTransactions.map((t) => [
@@ -122,6 +139,7 @@ export default function Transactions() {
       t.customer?.fullName || "Walk-in Customer",
       t.paymentType || "CASH",
       Number(t.totalAmount || 0),
+      Number(refundedByOrderId.get(t.id) || 0),
       String(t.status || "COMPLETED").toUpperCase(),
     ]);
     const csvBody = [headers, ...rows]
@@ -236,6 +254,7 @@ export default function Transactions() {
       <TransactionTable
         filteredTransactions={filteredTransactions}
         handleViewTransaction={handleViewTransaction}
+        refundedByOrderId={refundedByOrderId}
       />
 
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
@@ -245,98 +264,117 @@ export default function Transactions() {
               Transaction Details - #ORD-{selectedTransaction?.id}
             </DialogTitle>
           </DialogHeader>
-          {selectedTransaction && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Cashier
-                  </p>
-                  <p>{selectedTransaction.cashier?.fullName || "Unknown"}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Date &amp; Time
-                  </p>
-                  <p>{formatDate(selectedTransaction.createdAt)}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Type
-                  </p>
-                  <p>
-                    <Badge variant="outline">
-                      {String(selectedTransaction.status || "").toUpperCase() ===
-                      "REFUNDED"
-                        ? "Refunded Sale"
-                        : "Sale"}
-                    </Badge>
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Status
-                  </p>
-                  <p>
-                    <Badge
-                      variant="outline"
-                      className={getStatusColor(
-                        selectedTransaction.status || "COMPLETED",
-                      )}
+          {selectedTransaction && (() => {
+            const txStatus = String(
+              selectedTransaction.status || "COMPLETED",
+            ).toUpperCase();
+            const txTotal = Math.abs(
+              Number(selectedTransaction.totalAmount || 0),
+            );
+            const txRefunded = Number(
+              refundedByOrderId.get(selectedTransaction.id) || 0,
+            );
+            const isFullRefund = txStatus === "REFUNDED";
+            const isPartialRefund =
+              txStatus === "PARTIALLY_REFUNDED" ||
+              (!isFullRefund && txRefunded > 0);
+            const netCollected = Math.max(0, txTotal - txRefunded);
+
+            return (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Cashier
+                    </p>
+                    <p>{selectedTransaction.cashier?.fullName || "Unknown"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Date &amp; Time
+                    </p>
+                    <p>{formatDate(selectedTransaction.createdAt)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Type
+                    </p>
+                    <p>
+                      <Badge variant="outline">
+                        {isFullRefund
+                          ? "Refunded Sale"
+                          : isPartialRefund
+                            ? "Partial Refund"
+                            : "Sale"}
+                      </Badge>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Status
+                    </p>
+                    <p>
+                      <Badge
+                        variant="outline"
+                        className={getStatusColor(txStatus)}
+                      >
+                        {txStatus}
+                      </Badge>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Payment Method
+                    </p>
+                    <p>{selectedTransaction.paymentType || "CASH"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Amount
+                    </p>
+                    <p
+                      className={`font-bold ${
+                        isFullRefund
+                          ? "text-red-600"
+                          : isPartialRefund
+                            ? "text-amber-600"
+                            : "text-green-600"
+                      }`}
                     >
-                      {String(
-                        selectedTransaction.status || "COMPLETED",
-                      ).toUpperCase()}
-                    </Badge>
-                  </p>
+                      ₫{txTotal.toLocaleString("vi-VN")}
+                    </p>
+                    {txRefunded > 0 && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Refunded: -₫{txRefunded.toLocaleString("vi-VN")} • Net: ₫
+                        {netCollected.toLocaleString("vi-VN")}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Payment Method
-                  </p>
-                  <p>{selectedTransaction.paymentType || "CASH"}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Amount
-                  </p>
-                  <p
-                    className={`font-bold ${
-                      String(selectedTransaction.status || "").toUpperCase() ===
-                      "REFUNDED"
-                        ? "text-red-600"
-                        : "text-green-600"
-                    }`}
-                  >
-                    ₫
-                    {Math.abs(
-                      Number(selectedTransaction.totalAmount || 0),
-                    ).toLocaleString("vi-VN")}
-                  </p>
-                </div>
-              </div>
 
-              <div className="pt-4 border-t">
-                <h4 className="font-medium mb-2">Sale Details</h4>
-                <p className="text-sm text-muted-foreground">
-                  Invoice: INV-{selectedTransaction.id}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Customer:{" "}
-                  {selectedTransaction.customer?.fullName || "Walk-in Customer"}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Items: {selectedTransaction.items?.length || 0}
-                </p>
-              </div>
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium mb-2">Sale Details</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Invoice: INV-{selectedTransaction.id}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Customer:{" "}
+                    {selectedTransaction.customer?.fullName ||
+                      "Walk-in Customer"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Items: {selectedTransaction.items?.length || 0}
+                  </p>
+                </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button variant="outline" onClick={handlePrintReceipt}>
-                  <Printer className="h-4 w-4 mr-1" /> Print / Download Receipt
-                </Button>
+                <div className="flex justify-end gap-2 pt-4 border-t">
+                  <Button variant="outline" onClick={handlePrintReceipt}>
+                    <Printer className="h-4 w-4 mr-1" /> Print / Download Receipt
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

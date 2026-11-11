@@ -13,7 +13,11 @@ import { Badge } from "../../../components/ui/badge";
 import { Eye } from "lucide-react";
 import { formatDate, getStatusColor } from "../../cashier/order/data";
 
-const TransactionTable = ({ filteredTransactions, handleViewTransaction }) => {
+const TransactionTable = ({
+  filteredTransactions,
+  handleViewTransaction,
+  refundedByOrderId = new Map(),
+}) => {
   return (
     <Card>
       <CardContent className="p-0">
@@ -46,8 +50,14 @@ const TransactionTable = ({ filteredTransactions, handleViewTransaction }) => {
                   transaction.status || "COMPLETED",
                 ).toUpperCase();
                 const amount = Number(transaction.totalAmount || 0);
+                const refundedAmount = Number(
+                  refundedByOrderId?.get?.(transaction.id) || 0,
+                );
                 const isRefunded = statusUpper === "REFUNDED" || amount < 0;
                 const isCancelled = statusUpper === "CANCELLED";
+                const isPartiallyRefunded =
+                  statusUpper === "PARTIALLY_REFUNDED" ||
+                  (!isRefunded && !isCancelled && refundedAmount > 0);
 
                 return (
                   <TableRow key={transaction.id}>
@@ -69,14 +79,23 @@ const TransactionTable = ({ filteredTransactions, handleViewTransaction }) => {
                           ? "text-muted-foreground line-through font-medium"
                           : isRefunded
                             ? "text-red-600 font-medium"
-                            : "text-green-600 font-medium"
+                            : isPartiallyRefunded
+                              ? "text-amber-600 font-medium"
+                              : "text-green-600 font-medium"
                       }
                     >
-                      {isCancelled
-                        ? `₫${Math.abs(amount).toLocaleString("vi-VN")}`
-                        : isRefunded
-                          ? `-₫${Math.abs(amount).toLocaleString("vi-VN")}`
-                          : `+₫${Math.abs(amount).toLocaleString("vi-VN")}`}
+                      <div>
+                        {isCancelled
+                          ? `₫${Math.abs(amount).toLocaleString("vi-VN")}`
+                          : isRefunded
+                            ? `-₫${Math.abs(amount).toLocaleString("vi-VN")}`
+                            : `+₫${Math.abs(amount).toLocaleString("vi-VN")}`}
+                      </div>
+                      {isPartiallyRefunded && refundedAmount > 0 && (
+                        <div className="text-xs text-muted-foreground font-normal">
+                          Refunded: -₫{refundedAmount.toLocaleString("vi-VN")}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>{transaction.paymentType || "CASH"}</TableCell>
                     <TableCell>

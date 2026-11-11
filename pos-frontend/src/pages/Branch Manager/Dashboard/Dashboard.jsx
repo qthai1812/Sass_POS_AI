@@ -10,6 +10,7 @@ import { getTodayOverview, getPaymentBreakdown } from "@/Redux Toolkit/features/
 import PaymentBreakdown from "./PaymentBreakdown";
 import TodayOverview from "./TodayOverview";
 import AiBusinessCopilotCard from "@/components/ai/AiBusinessCopilotCard";
+import { getLocalIsoDate } from "@/utils/formateDate";
 
 export default function Dashboard() {
   const dispatch = useDispatch();
@@ -21,7 +22,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (branchId) {
       dispatch(getTodayOverview(branchId));
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalIsoDate();
       dispatch(getPaymentBreakdown({ branchId, date: today }));
     }
   }, [branchId, dispatch]);

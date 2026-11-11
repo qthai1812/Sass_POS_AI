@@ -26,9 +26,16 @@ const RecentOrdersCard = ({ shiftData }) => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {shiftData.recentOrders?.map((order) => (
+            {shiftData.recentOrders?.length > 0 ? shiftData.recentOrders.map((order) => (
               <TableRow key={order.id}>
-                <TableCell className="font-medium">{order.id}</TableCell>
+                <TableCell className="font-medium">
+                  <span>{order.id}</span>
+                  {order.status && order.status !== "COMPLETED" && (
+                    <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-normal">
+                      {order.status}
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell>{formatTime(order.createdAt)}</TableCell>
                 <TableCell className="flex items-center gap-1">
                   {order.paymentType ? (
@@ -44,7 +51,13 @@ const RecentOrdersCard = ({ shiftData }) => {
                   đ{order.totalAmount?.toFixed(2)}
                 </TableCell>
               </TableRow>
-            ))}
+            )) : (
+              <TableRow>
+                <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-6">
+                  No orders recorded during this shift yet.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </CardContent>

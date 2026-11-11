@@ -24,6 +24,8 @@ public class StoreDTO {
 
     private StoreStatus status;
 
+    private String rejectionReason;
+
     private Double commissionRate;
 
     private Double totalRevenue;

@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useToast } from "@/components/ui/use-toast";
-import {
-  getAllCustomers,
-  updateCustomer,
-} from "@/Redux Toolkit/features/customer/customerThunks";
+import { Button } from "@/components/ui/button";
+import { useSidebar } from "../../../context/hooks/useSidebar";
+import { getAllCustomers } from "@/Redux Toolkit/features/customer/customerThunks";
 import { getOrdersByCustomer } from "@/Redux Toolkit/features/order/orderThunks";
 import {
   filterCustomers,
-  validatePoints,
   calculateCustomerStats,
 } from "./utils/customerUtils";
 import {
@@ -16,16 +14,13 @@ import {
   CustomerList,
   CustomerDetails,
   PurchaseHistory,
-  AddPointsDialog,
 } from "./components";
 import { clearCustomerOrders } from "../../../Redux Toolkit/features/order/orderSlice";
-import {
-  selectSelectedCustomer,
-  setSelectedCustomer as setCartSelectedCustomer,
-} from "../../../Redux Toolkit/features/cart/cartSlice";
 import CustomerForm from "./CustomerForm";
+import UserProfileMenu from "@/components/account/UserProfileMenu";
 
 const CustomerLookupPage = () => {
+  const { setSidebarOpen } = useSidebar();
   const dispatch = useDispatch();
   const { toast } = useToast();
 
@@ -39,12 +34,9 @@ const CustomerLookupPage = () => {
     loading: orderLoading,
     error: orderError,
   } = useSelector((state) => state.order);
-  const cartCustomer = useSelector(selectSelectedCustomer);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [showAddPointsDialog, setShowAddPointsDialog] = useState(false);
-  const [pointsToAdd, setPointsToAdd] = useState(0);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
 
   useEffect(() => {
@@ -81,54 +73,6 @@ const CustomerLookupPage = () => {
     }
   };
 
-  const handleAddPoints = async () => {
-    const error = validatePoints(pointsToAdd);
-    if (error) {
-      toast({
-        title: "Invalid Points",
-        description: error,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const currentPts = Number(selectedCustomer?.loyaltyPoints || 0);
-      const newPoints = currentPts + Number(pointsToAdd);
-
-      const updated = await dispatch(
-        updateCustomer({
-          id: selectedCustomer.id,
-          customer: {
-            ...selectedCustomer,
-            loyaltyPoints: newPoints,
-          },
-        }),
-      ).unwrap();
-
-      setSelectedCustomer(updated);
-      // Đồng bộ luôn với giỏ hàng nếu khách hàng này đang được chọn trong POS
-      if (cartCustomer && cartCustomer.id === updated.id) {
-        dispatch(setCartSelectedCustomer(updated));
-      }
-
-      toast({
-        title: "Points Added",
-        description: `Đã cộng +${pointsToAdd} điểm cho ${
-          updated.fullName || updated.name
-        } (Tổng: ${updated.loyaltyPoints ?? newPoints} điểm)`,
-      });
-      setShowAddPointsDialog(false);
-      setPointsToAdd(0);
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err || "Failed to update customer points",
-        variant: "destructive",
-      });
-    }
-  };
-
   const customerStats = selectedCustomer
     ? calculateCustomerStats(customerOrders)
     : null;
@@ -142,8 +86,31 @@ const CustomerLookupPage = () => {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-4 bg-card border-b">
-        <h1 className="text-2xl font-bold">Customer Management</h1>
+      <div className="p-4 bg-card border-b flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            className="z-10 p-2 h-10 w-10 rounded-lg shadow-sm border-border hover:bg-muted shrink-0"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open sidebar"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </Button>
+          <h1 className="text-2xl font-bold">Customer Management</h1>
+        </div>
+        <UserProfileMenu />
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -164,7 +131,6 @@ const CustomerLookupPage = () => {
         <div className="w-2/3 flex flex-col overflow-y-auto">
           <CustomerDetails
             customer={displayCustomer}
-            onAddPoints={() => setShowAddPointsDialog(true)}
             loading={orderLoading}
           />
           {selectedCustomer && (
@@ -172,18 +138,6 @@ const CustomerLookupPage = () => {
           )}
         </div>
       </div>
-
-      <AddPointsDialog
-        isOpen={showAddPointsDialog}
-        onClose={() => {
-          setShowAddPointsDialog(false);
-          setPointsToAdd(0);
-        }}
-        customer={selectedCustomer}
-        pointsToAdd={pointsToAdd}
-        onPointsChange={setPointsToAdd}
-        onAddPoints={handleAddPoints}
-      />
 
       <CustomerForm
         showCustomerForm={showCustomerForm}

@@ -6,6 +6,7 @@ import com.zosh.service.ShiftReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -18,6 +19,7 @@ public class ShiftReportController {
 
     private final ShiftReportService shiftReportService;
 
+    @PreAuthorize("hasRole('CASHIER')")
     @PostMapping("/start")
     public ResponseEntity<ShiftReportDTO> startShift(
             @RequestParam(required = false) Long branchId
@@ -25,6 +27,7 @@ public class ShiftReportController {
         return ResponseEntity.ok(shiftReportService.startShift(branchId));
     }
 
+    @PreAuthorize("hasRole('CASHIER')")
     @PatchMapping("/end")
     public ResponseEntity<ShiftReportDTO> endShift(
             @RequestParam(required = false) Long shiftReportId
@@ -34,6 +37,7 @@ public class ShiftReportController {
         );
     }
 
+    @PreAuthorize("hasRole('CASHIER')")
     @GetMapping("/current")
     public ResponseEntity<ShiftReportDTO> getCurrentShiftProgress(
             @RequestParam(required = false) Long cashierId
@@ -43,11 +47,13 @@ public class ShiftReportController {
         );
     }
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @GetMapping
     public ResponseEntity<List<ShiftReportDTO>> getAllShiftReports() {
         return ResponseEntity.ok(shiftReportService.getAllShiftReports());
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/cashier/{cashierId}/by-date")
     public ResponseEntity<ShiftReportDTO> getShiftReportByDate(
             @PathVariable Long cashierId,
@@ -58,6 +64,7 @@ public class ShiftReportController {
         );
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/cashier/{cashierId}")
     public ResponseEntity<List<ShiftReportDTO>> getShiftReportByCashier(
             @PathVariable Long cashierId
@@ -67,6 +74,7 @@ public class ShiftReportController {
         );
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/branch/{branchId}")
     public ResponseEntity<List<ShiftReportDTO>> getShiftReportByBranch(
             @PathVariable Long branchId
@@ -76,6 +84,7 @@ public class ShiftReportController {
         );
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/{id}")
     public ResponseEntity<ShiftReportDTO> getShiftReportById(
             @PathVariable Long id
@@ -85,6 +94,7 @@ public class ShiftReportController {
         );
     }
 
+    @PreAuthorize("denyAll()")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse> deleteShiftReport(
             @PathVariable Long id

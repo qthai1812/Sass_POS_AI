@@ -33,6 +33,8 @@ public class OrderDTO {
 
     private LocalDateTime createdAt;
 
+    private LocalDateTime paidAt;
+
     private Long branchId;
 
     private Long customerId;
@@ -48,6 +50,8 @@ public class OrderDTO {
     private OrderStatus status;
 
     private String paymentSessionId;
+
+    private String paymentTransactionId;
 
     private List<OrderItemDTO> items;
 }

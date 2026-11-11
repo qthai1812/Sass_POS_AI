@@ -36,7 +36,13 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const reqUrl = response.config?.url || '';
+    if (reqUrl.includes('/api/users/change-password') && response.data?.jwt) {
+      localStorage.setItem('jwt', response.data.jwt);
+    }
+    return response;
+  },
   (error) => {
     const reqUrl = error.config?.url || '';
     const onAuthRoute =

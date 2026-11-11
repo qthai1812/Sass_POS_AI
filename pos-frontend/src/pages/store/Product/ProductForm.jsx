@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import * as Yup from "yup";
 import { Button } from "@/components/ui/button";
@@ -18,10 +18,9 @@ import {
 } from "@/Redux Toolkit/features/product/productThunks";
 import { toast } from "@/components/ui/use-toast";
 import { getCategoriesByStore } from "../../../Redux Toolkit/features/category/categoryThunks";
-import { PhoneOutgoing } from "lucide-react";
-import { X } from "lucide-react";
-import { useState } from "react";
+import { PhoneOutgoing, X } from "lucide-react";
 import { uploadToCloudinary } from "../../../utils/uploadToCloudinary";
+
 const validationSchema = Yup.object({
   name: Yup.string().required("Product name is required"),
   sku: Yup.string().required("SKU is required"),
@@ -35,7 +34,7 @@ const validationSchema = Yup.object({
   description: Yup.string().optional(),
   brand: Yup.string().optional(),
   color: Yup.string().optional(),
-  image: Yup.string().optional(),
+  image: Yup.string().nullable().optional(),
 });
 
 const ProductForm = ({
@@ -69,9 +68,10 @@ const ProductForm = ({
       const token = localStorage.getItem("jwt");
       const dto = {
         ...values,
+        image: values.image?.trim() || null,
         mrp: parseFloat(values.mrp),
         sellingPrice: parseFloat(values.sellingPrice),
-        storeId: store.id,
+        storeId: store?.id,
         categoryId: parseInt(values.categoryId),
       };
 
@@ -111,14 +111,33 @@ const ProductForm = ({
   }, [dispatch, store]);
 
   const handleImageChange = async (e, setFieldValue) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
     setUploadingImage(true);
-    const image = await uploadToCloudinary(file);
-    if (image) {
-      setFieldValue("image", image);
+    try {
+      const image = await uploadToCloudinary(file);
+      if (image) {
+        setFieldValue("image", image);
+      } else {
+        toast({
+          title: "Upload failed",
+          description: "Could not upload image. Please try again or paste an image URL.",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Upload failed",
+        description:
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to upload image.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingImage(false);
+      e.target.value = "";
     }
-    setUploadingImage(false);
   };
 
   return (
@@ -130,7 +149,7 @@ const ProductForm = ({
     >
       {({ isSubmitting, touched, errors, values, setFieldValue }) => (
         <Form className="space-y-4 py-2 pr-2">
-          <div className="flex flex-wrap gap-5" item xs={12}>
+          <div className="flex flex-wrap gap-5">
             {!values.image ? (
               <>
                 {" "}
@@ -146,7 +165,7 @@ const ProductForm = ({
                     <PhoneOutgoing className="text-gray-700" />
                   </span>
                   {uploadImage && (
-                    <div className="absolute left-0 right-0 top-0 bottom-0 w-24 h-24 flex justify-center items-center">
+                    <div className="absolute left-0 right-0 top-0 bottom-0 w-24 h-24 flex justify-center items-center bg-background/80 rounded-md text-xs font-medium">
                       <p>Uploading...</p>
                     </div>
                   )}
@@ -163,8 +182,8 @@ const ProductForm = ({
                   <Button
                     type="button"
                     onClick={() => {
-                      setFieldValue("image", null)
-                      console.log("handle remove image")
+                      setFieldValue("image", null);
+                      console.log("handle remove image");
                     }}
                     className="absolute top-0 right-0"
                     size="icon"
@@ -185,7 +204,14 @@ const ProductForm = ({
               as={Input}
               id="image"
               name="image"
+              value={values.image ?? ""}
+              onChange={(e) => setFieldValue("image", e.target.value || null)}
               placeholder="Paste image URL"
+            />
+            <ErrorMessage
+              name="image"
+              component="div"
+              className="text-red-500 text-sm"
             />
           </div>
 
@@ -363,7 +389,7 @@ const ProductForm = ({
             <Button
               type="submit"
               className="bg-emerald-600 hover:bg-emerald-700"
-              disabled={isSubmitting || loading}
+              disabled={isSubmitting || loading || uploadImage}
             >
               {isSubmitting || loading ? (
                 <span className="flex items-center">

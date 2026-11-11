@@ -24,6 +24,47 @@ export const getUserProfile = createAsyncThunk(
   },
 );
 
+// Update own profile (fullName, phone)
+export const updateUserProfile = createAsyncThunk(
+  "user/updateProfile",
+  async ({ fullName, phone, token }, { rejectWithValue }) => {
+    try {
+      const res = await api.put(
+        "/api/users/profile",
+        { fullName, phone },
+        buildAuthConfig(token),
+      );
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Không thể cập nhật thông tin cá nhân",
+      );
+    }
+  },
+);
+
+// Change own password
+export const changeUserPassword = createAsyncThunk(
+  "user/changePassword",
+  async ({ currentPassword, newPassword, token }, { rejectWithValue }) => {
+    try {
+      const res = await api.put(
+        "/api/users/change-password",
+        { currentPassword, newPassword },
+        buildAuthConfig(token),
+      );
+      if (res.data?.jwt) {
+        localStorage.setItem("jwt", res.data.jwt);
+      }
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Đổi mật khẩu thất bại",
+      );
+    }
+  },
+);
+
 // Get all customers (Khớp với CustomerController: /api/customers & UserController: /api/users/customer)
 export const getCustomers = createAsyncThunk(
   "user/getCustomers",

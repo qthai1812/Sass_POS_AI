@@ -199,8 +199,8 @@ export const selectDiscountAmount = (state) => {
     rawDiscount = Math.min(subtotal, Number(discount.value) || 0);
   }
 
-  // Nếu là Thu ngân (ROLE_BRANCH_CASHIER) giảm giá trực tiếp không qua mã Coupon -> giới hạn tối đa 10%
-  const isCashier = state.user?.userProfile?.role === "ROLE_BRANCH_CASHIER";
+  // Nếu là Thu ngân (ROLE_CASHIER) giảm giá trực tiếp không qua mã Coupon -> giới hạn tối đa 10%
+  const isCashier = state.user?.userProfile?.role === "ROLE_CASHIER";
   const hasCoupon = Boolean(state.cart.couponCode && state.cart.couponCode.trim());
   if (isCashier && !hasCoupon) {
     const maxCashierManualDiscount = Math.round(subtotal * 0.1);

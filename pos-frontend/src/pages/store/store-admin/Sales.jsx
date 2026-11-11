@@ -22,7 +22,6 @@ import {
   getSalesByPaymentMethod,
 } from "@/Redux Toolkit/features/storeAnalytics/storeAnalyticsThunks";
 import { useToast } from "@/components/ui/use-toast";
-import AddSaleDialog from "./AddSaleDialog";
 
 export default function Sales() {
   const dispatch = useDispatch();
@@ -106,11 +105,15 @@ export default function Sales() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">
-          Revenue Management
-        </h1>
-        <AddSaleDialog onSaleAdded={fetchSalesData} />
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Revenue Management
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Theo dõi tổng quan doanh thu toàn chuỗi (Đơn hàng được ghi nhận trực tiếp từ quầy POS của Thu ngân).
+          </p>
+        </div>
       </div>
 
       {/* Stats Cards */}

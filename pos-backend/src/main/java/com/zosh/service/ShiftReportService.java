@@ -15,6 +15,8 @@ public interface ShiftReportService {
 
     ShiftReportDTO endShift(Long shiftReportId, LocalDateTime shiftEnd) throws Exception;
 
+    ShiftReportDTO closeShiftInternal(Long shiftReportId, LocalDateTime shiftEnd) throws Exception;
+
     ShiftReportDTO getShiftReportById(Long id) throws Exception;
 
     List<ShiftReportDTO> getAllShiftReports();

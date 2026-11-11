@@ -4,6 +4,21 @@ import { useToast } from "@/components/ui/use-toast";
 import { getUserProfile } from "@/Redux Toolkit/features/user/userThunks";
 import api from "@/utils/api";
 
+const DEFAULT_NOTIFICATIONS = {
+  newStoreRequests: false,
+  storeApprovals: false,
+  commissionUpdates: false,
+  systemAlerts: false,
+  emailNotifications: false,
+};
+
+const DEFAULT_SYSTEM_SETTINGS = {
+  autoApproveStores: false,
+  requireDocumentVerification: true,
+  commissionAutoCalculation: true,
+  maintenanceMode: false,
+};
+
 export const useSettingsState = () => {
   const dispatch = useDispatch();
   const { userProfile, loading } = useSelector((state) => state.user);
@@ -44,20 +59,8 @@ export const useSettingsState = () => {
     confirm: false,
   });
 
-  const [notifications, setNotifications] = useState({
-    newStoreRequests: true,
-    storeApprovals: true,
-    commissionUpdates: false,
-    systemAlerts: true,
-    emailNotifications: true,
-  });
-
-  const [systemSettings, setSystemSettings] = useState({
-    autoApproveStores: false,
-    requireDocumentVerification: true,
-    commissionAutoCalculation: true,
-    maintenanceMode: false,
-  });
+  const [notifications] = useState(DEFAULT_NOTIFICATIONS);
+  const [systemSettings] = useState(DEFAULT_SYSTEM_SETTINGS);
 
   const [paymentConfig, setPaymentConfig] = useState({
     acceptMomo: true,
@@ -192,49 +195,19 @@ export const useSettingsState = () => {
     }
   };
 
-  useEffect(() => {
-    const savedNotif = localStorage.getItem("superadmin_notifications");
-    if (savedNotif) {
-      try {
-        setNotifications(JSON.parse(savedNotif));
-      } catch {
-        // ignore invalid stored JSON
-      }
-    }
-    const savedSys = localStorage.getItem("superadmin_system_settings");
-    if (savedSys) {
-      try {
-        setSystemSettings(JSON.parse(savedSys));
-      } catch {
-        // ignore invalid stored JSON
-      }
-    }
-  }, []);
-
-  const handleNotificationToggle = (key) => {
-    setNotifications((prev) => {
-      const updated = { ...prev, [key]: !prev[key] };
-      localStorage.setItem("superadmin_notifications", JSON.stringify(updated));
-      toast({
-        title: "Notification Preference Saved",
-        description: `Setting "${key}" has been ${updated[key] ? "enabled" : "disabled"}.`,
-      });
-      return updated;
+  const handleNotificationToggle = () => {
+    toast({
+      title: "Tính năng sắp ra mắt",
+      description:
+        "Cấu hình kênh thông báo tự động hiện chưa khả dụng trên máy chủ.",
     });
   };
 
-  const handleSystemSettingToggle = (key) => {
-    setSystemSettings((prev) => {
-      const updated = { ...prev, [key]: !prev[key] };
-      localStorage.setItem(
-        "superadmin_system_settings",
-        JSON.stringify(updated),
-      );
-      toast({
-        title: "System Setting Updated",
-        description: `Setting "${key}" has been ${updated[key] ? "enabled" : "disabled"}.`,
-      });
-      return updated;
+  const handleSystemSettingToggle = () => {
+    toast({
+      title: "Tính năng sắp ra mắt",
+      description:
+        "Chính sách vận hành tự động và Maintenance Mode hiện chưa khả dụng trên máy chủ.",
     });
   };
 

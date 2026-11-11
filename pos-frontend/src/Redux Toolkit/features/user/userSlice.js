@@ -2,6 +2,7 @@ import { createSlice } from '@reduxjs/toolkit';
 import { login, signup } from "../auth/authThunk";
 import {
   getUserProfile,
+  updateUserProfile,
   getCustomers,
   getCashiers,
   getAllUsers,
@@ -42,6 +43,12 @@ const userSlice = createSlice({
       .addCase(getUserProfile.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+      })
+
+      .addCase(updateUserProfile.fulfilled, (state, action) => {
+        if (action.payload) {
+          state.userProfile = action.payload;
+        }
       })
 
       .addCase(login.fulfilled, (state, action) => {

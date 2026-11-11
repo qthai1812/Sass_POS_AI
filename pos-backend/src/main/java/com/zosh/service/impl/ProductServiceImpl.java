@@ -34,13 +34,9 @@ public class ProductServiceImpl implements ProductService {
         if (user == null || store == null) {
             throw new AccessDeniedException("You do not have permission to manage products in this store");
         }
-        if (user.getRole() == UserRole.ROLE_ADMIN) {
-            return;
-        }
         boolean isStoreOwner = store.getStoreAdmin() != null && store.getStoreAdmin().getId().equals(user.getId());
         boolean isSameStoreEmployee = user.getStore() != null && user.getStore().getId().equals(store.getId());
-        boolean hasManagerRole = user.getRole() == UserRole.ROLE_STORE_ADMIN
-                || user.getRole() == UserRole.ROLE_STORE_MANAGER;
+        boolean hasManagerRole = user.getRole() == UserRole.ROLE_STORE_OWNER;
 
         if (!hasManagerRole || (!isStoreOwner && !isSameStoreEmployee)) {
             throw new AccessDeniedException("You do not have permission to manage products in this store");

@@ -93,7 +93,7 @@ export default function SmartPosAssistantBar() {
         dispatch(setCouponCode(cp.code));
         dispatch(
           setDiscount({
-            type: cp.discountType?.toLowerCase() === "percentage" ? "percentage" : "flat",
+            type: cp.discountType?.toLowerCase() === "percentage" ? "percentage" : "fixed",
             value: cp.discountValue,
             minOrderValue: cp.minOrderValue,
           })

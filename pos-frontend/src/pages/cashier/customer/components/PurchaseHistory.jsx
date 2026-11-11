@@ -8,6 +8,7 @@ import {
   DollarSignIcon,
 } from "lucide-react";
 import { formatDate, getStatusColor } from "../../order/data";
+import { getHistoricalUnitPrice } from "../../return/returnUtils";
 
 const PurchaseHistory = ({ orders, loading = false }) => {
   if (loading) {
@@ -35,8 +36,11 @@ const PurchaseHistory = ({ orders, loading = false }) => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ShoppingBagIcon className="h-5 w-5" />
-            Purchase History
+            Purchase History (Chi nhánh hiện tại)
           </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Hiển thị các đơn hàng khách đã phát sinh tại chi nhánh hiện tại.
+          </p>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -79,9 +83,7 @@ const PurchaseHistory = ({ orders, loading = false }) => {
                     <h4 className="text-sm font-medium mb-2">Items:</h4>
                     <div className="space-y-1">
                       {order.items.map((item, index) => {
-                        const unitPrice =
-                          item.product?.sellingPrice ??
-                          (item.price || 0) / (item.quantity || 1);
+                        const unitPrice = getHistoricalUnitPrice(item);
                         return (
                           <div
                             key={index}

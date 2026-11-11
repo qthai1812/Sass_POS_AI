@@ -30,13 +30,13 @@ export default function ShiftAiHandoverCard({ shiftId }) {
   };
 
   return (
-    <Card className="border-primary/30 bg-gradient-to-r from-primary/5 to-background">
+    <Card className={`border-primary/30 bg-gradient-to-r from-primary/5 to-background ${!summary ? "no-print" : "print:shadow-none print:border-gray-300 break-inside-avoid"}`}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-base flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-primary" />
           Trợ lý AI Tóm tắt & Bàn giao ca
         </CardTitle>
-        <Button size="sm" onClick={handleGenerateSummary} disabled={loading}>
+        <Button size="sm" className="no-print" onClick={handleGenerateSummary} disabled={loading}>
           {loading ? (
             <>
               <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />

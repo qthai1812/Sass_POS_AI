@@ -74,6 +74,10 @@ public class FileService {
             throw new IllegalArgumentException("Invalid file content type. Only image files are allowed");
         }
 
+        if (!hasValidImageSignature(file)) {
+            throw new IllegalArgumentException("Invalid image file signature. Uploaded file is not a valid PNG, JPEG, GIF, or WebP image");
+        }
+
         String newFileName = UUID.randomUUID() + fileExtension;
         Path targetLocation = this.fileStorageLocation.resolve(newFileName).normalize();
         if (!targetLocation.startsWith(this.fileStorageLocation)) {
@@ -91,6 +95,43 @@ public class FileService {
                 .path("/api/media/download/")
                 .path(newFileName)
                 .toUriString();
+    }
+
+    private boolean hasValidImageSignature(MultipartFile file) {
+        try (java.io.InputStream is = file.getInputStream()) {
+            byte[] header = new byte[12];
+            int read = is.read(header);
+            if (read < 4) {
+                return false;
+            }
+            // PNG: 89 50 4E 47 0D 0A 1A 0A
+            if (read >= 8
+                    && (header[0] & 0xFF) == 0x89
+                    && header[1] == 0x50
+                    && header[2] == 0x4E
+                    && header[3] == 0x47) {
+                return true;
+            }
+            // JPEG: FF D8 FF
+            if ((header[0] & 0xFF) == 0xFF
+                    && (header[1] & 0xFF) == 0xD8
+                    && (header[2] & 0xFF) == 0xFF) {
+                return true;
+            }
+            // GIF: 'G' 'I' 'F' '8'
+            if (header[0] == 'G' && header[1] == 'I' && header[2] == 'F' && header[3] == '8') {
+                return true;
+            }
+            // WebP: 'R' 'I' 'F' 'F' ... 'W' 'E' 'B' 'P'
+            if (read >= 12
+                    && header[0] == 'R' && header[1] == 'I' && header[2] == 'F' && header[3] == 'F'
+                    && header[8] == 'W' && header[9] == 'E' && header[10] == 'B' && header[11] == 'P') {
+                return true;
+            }
+            return false;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     public Resource download(String fileName) {

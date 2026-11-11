@@ -7,6 +7,7 @@ import com.zosh.service.ProductService;
 import com.zosh.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,6 +20,7 @@ public class ProductController {
     private final ProductService productService;
     private final UserService userService;
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @PostMapping
     public ResponseEntity<ProductDTO> create(
             @RequestBody ProductDTO productDTO,
@@ -28,11 +30,13 @@ public class ProductController {
         return ResponseEntity.ok(productService.createProduct(productDTO, user));
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/{id}")
     public ResponseEntity<ProductDTO> getById(@PathVariable Long id) throws Exception {
         return ResponseEntity.ok(productService.getProductById(id));
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/store/{storeId}")
     public ResponseEntity<List<ProductDTO>> getByStoreId(
             @PathVariable Long storeId,
@@ -41,6 +45,7 @@ public class ProductController {
         return ResponseEntity.ok(productService.getProductsByStoreId(storeId));
     }
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @RequestMapping(value = "/{id}", method = {RequestMethod.PATCH, RequestMethod.PUT})
     public ResponseEntity<ProductDTO> update(
             @PathVariable Long id,
@@ -51,6 +56,7 @@ public class ProductController {
         return ResponseEntity.ok(productService.updateProduct(id, productDTO, user));
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/store/{storeId}/search")
     public ResponseEntity<List<ProductDTO>> searchByKeyword(
             @PathVariable Long storeId,
@@ -60,6 +66,7 @@ public class ProductController {
         return ResponseEntity.ok(productService.searchByKeyword(storeId, keyword));
     }
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse> delete(
             @PathVariable Long id,

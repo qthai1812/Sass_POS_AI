@@ -109,7 +109,9 @@ const OrdersTable = ({
                 {order.createdAt ? order.createdAt.slice(0, 10) : "-"}
               </TableCell>
               <TableCell>
-                {order.totalAmount ? `đ${order.totalAmount}` : "-"}
+                {order.totalAmount != null
+                  ? `₫${Math.round(Number(order.totalAmount)).toLocaleString("vi-VN")}`
+                  : "-"}
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
@@ -121,7 +123,7 @@ const OrdersTable = ({
                   className={getStatusColor(order.status)}
                   variant="secondary"
                 >
-                  {order.status || "COMPLETE"}
+                  {order.status || "COMPLETED"}
                 </Badge>
               </TableCell>
               <TableCell className="text-right">

@@ -3,6 +3,8 @@ export const getStatusBadgeVariant = (status) => {
     case "COMPLETED":
     case "COMPLETE":
       return "default";
+    case "PARTIALLY_REFUNDED":
+      return "outline";
     case "PENDING":
       return "outline";
     case "CANCELLED":
@@ -19,6 +21,8 @@ export const getStatusColor = (status) => {
     case "COMPLETED":
     case "COMPLETE":
       return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30";
+    case "PARTIALLY_REFUNDED":
+      return "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30";
     case "PENDING":
       return "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30";
     case "CANCELLED":

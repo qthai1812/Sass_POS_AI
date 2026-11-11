@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import {
   Dialog,
@@ -6,106 +6,117 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { EmployeeForm } from "../../store/Employee";
-import { Plus, Download } from "lucide-react";
-
-export const AddEmployeeDialog = ({
-  isAddDialogOpen,
-  setIsAddDialogOpen,
-  handleAddEmployee,
-  roles,
-}) => (
-  <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-    <DialogTrigger asChild>
-      <Button className="bg-emerald-600 hover:bg-emerald-700">
-        <Plus className="mr-2 h-4 w-4" /> Add Employee
-      </Button>
-    </DialogTrigger>
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Add New Employee</DialogTitle>
-      </DialogHeader>
-      <EmployeeForm
-        initialData={null}
-        onSubmit={handleAddEmployee}
-        roles={roles}
-      />
-    </DialogContent>
-  </Dialog>
-);
-
-export const EditEmployeeDialog = ({
-  isEditDialogOpen,
-  setIsEditDialogOpen,
-  selectedEmployee,
-  handleEditEmployee,
-  roles,
-}) =>
-  selectedEmployee && (
-    <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit Employee</DialogTitle>
-        </DialogHeader>
-        <EmployeeForm
-          initialData={
-            selectedEmployee
-              ? {
-                  ...selectedEmployee,
-                  branchId: selectedEmployee.branchId || "",
-                }
-              : null
-          }
-          onSubmit={handleEditEmployee}
-          roles={roles}
-        />
-      </DialogContent>
-    </Dialog>
-  );
+import { Download, Copy, Check } from "lucide-react";
 
 export const ResetPasswordDialog = ({
   isResetPasswordDialogOpen,
   setIsResetPasswordDialogOpen,
   selectedEmployee,
   handleResetPassword,
-}) =>
-  selectedEmployee && (
-    <Dialog
-      open={isResetPasswordDialogOpen}
-      onOpenChange={setIsResetPasswordDialogOpen}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Reset Password</DialogTitle>
-        </DialogHeader>
-        <div className="py-4">
-          <p>
-            Are you sure you want to reset the password for{" "}
-            <strong>
-              {selectedEmployee.fullName || selectedEmployee.name}
-            </strong>
-            ?
-          </p>
-          <p className="text-sm text-gray-500 mt-2">
-            A temporary password will be generated and applied to their account.
-          </p>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setIsResetPasswordDialogOpen(false)}
-          >
-            Cancel
-          </Button>
-          <Button onClick={handleResetPassword}>Reset Password</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+  generatedPassword = "",
+  isResetting = false,
+}) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!generatedPassword) return;
+    try {
+      await navigator.clipboard.writeText(generatedPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard API may be unavailable on non-HTTPS origins
+    }
+  };
+
+  return (
+    selectedEmployee && (
+      <Dialog
+        open={isResetPasswordDialogOpen}
+        onOpenChange={setIsResetPasswordDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Cashier Password</DialogTitle>
+          </DialogHeader>
+          {generatedPassword ? (
+            <div className="py-4 space-y-3">
+              <p className="text-sm">
+                Mật khẩu tạm thời cho thu ngân{" "}
+                <strong>
+                  {selectedEmployee.fullName || selectedEmployee.email}
+                </strong>{" "}
+                đã được cập nhật:
+              </p>
+              <div className="flex items-center justify-between gap-2 p-3 rounded-lg border bg-emerald-500/10 border-emerald-500/30">
+                <code className="font-mono text-base font-bold text-emerald-700 dark:text-emerald-300 select-all">
+                  {generatedPassword}
+                </code>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCopy}
+                  className="gap-1.5"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      Copy
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Phiên đăng nhập cũ của thu ngân đã bị thu hồi. Hãy gửi mật khẩu này cho nhân viên và nhắc đổi mật khẩu ngay sau khi đăng nhập.
+              </p>
+            </div>
+          ) : (
+            <div className="py-4">
+              <p>
+                Are you sure you want to reset the password for{" "}
+                <strong>
+                  {selectedEmployee.fullName || selectedEmployee.name}
+                </strong>
+                ?
+              </p>
+              <p className="text-sm text-gray-500 mt-2">
+                A temporary password will be generated and applied to their account.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            {generatedPassword ? (
+              <Button onClick={() => setIsResetPasswordDialogOpen(false)}>
+                Done
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsResetPasswordDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleResetPassword} disabled={isResetting}>
+                  {isResetting ? "Resetting..." : "Reset Password"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
   );
+};
 
 export const PerformanceDialog = ({
   isPerformanceDialogOpen,
@@ -122,8 +133,9 @@ export const PerformanceDialog = ({
       o.cashier?.id === selectedEmployee?.id;
     if (!matchesEmployee) return false;
 
-    const statusUpper = String(o.status || "").toUpperCase();
-    if (statusUpper === "CANCELLED" || statusUpper === "REFUNDED") return false;
+    const statusUpper = String(o.status || "COMPLETED").toUpperCase();
+    if (statusUpper !== "COMPLETED" && statusUpper !== "PARTIALLY_REFUNDED")
+      return false;
 
     if (o.createdAt) {
       const orderDate = new Date(o.createdAt);

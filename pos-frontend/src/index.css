@@ -125,3 +125,81 @@
   font-weight: 900;
   font-style: normal;
 }
+
+
+@media print {
+  @page {
+    size: auto;
+    margin: 12mm;
+    @top-left {
+      content: "";
+    }
+    @top-center {
+      content: "";
+    }
+    @top-right {
+      content: "";
+    }
+  }
+
+  html,
+  body,
+  #root {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .print-scroll-reset {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+  }
+
+  body:has(.print-modal-root) #root {
+    display: none !important;
+  }
+
+  .print-modal-root {
+    position: static !important;
+    inset: auto !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    translate: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  .print-modal-root[data-paper-size="58mm"] {
+    max-width: 58mm !important;
+    margin: 0 auto !important;
+    font-size: 11px !important;
+  }
+
+  .print-modal-root[data-paper-size="80mm"] {
+    max-width: 80mm !important;
+    margin: 0 auto !important;
+    font-size: 12px !important;
+  }
+
+  .no-print,
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+}

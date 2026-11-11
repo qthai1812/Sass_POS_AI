@@ -16,7 +16,7 @@ import {
 import { clearStoreState } from "./Redux Toolkit/features/store/storeSlice";
 import SuperAdminRoutes from "./routes/SuperAdminRoutes";
 import PageNotFound from "./pages/common/PageNotFound";
-import { Ban, Clock, RefreshCw, LogOut } from "lucide-react";
+import { AlertTriangle, Ban, Clock, RefreshCw, LogOut } from "lucide-react";
 
 const App = () => {
   const dispatch = useDispatch();
@@ -45,12 +45,12 @@ const App = () => {
       setStoreChecked(false);
       return;
     }
-    if (userRole === "ROLE_ADMIN") {
+    if (userRole === "ROLE_SUPER_ADMIN") {
       setStoreChecked(true);
       return;
     }
     try {
-      if (userRole === "ROLE_STORE_ADMIN") {
+      if (userRole === "ROLE_STORE_OWNER") {
         await dispatch(getStoreByAdmin()).unwrap();
       } else {
         try {
@@ -89,7 +89,7 @@ const App = () => {
   }
 
   if (userProfile && userProfile.role) {
-    if (userProfile.role === "ROLE_ADMIN") {
+    if (userProfile.role === "ROLE_SUPER_ADMIN") {
       return (
         <Routes>
           <Route path="/" element={<Navigate to="/super-admin" replace />} />
@@ -159,7 +159,7 @@ const App = () => {
 
     // Synchronized PENDING guard for Store Admin, Store Manager, Branch Manager, and Cashier
     if (effectiveStoreStatus === "PENDING") {
-      const isStoreAdmin = userProfile.role === "ROLE_STORE_ADMIN";
+      const isStoreAdmin = userProfile.role === "ROLE_STORE_OWNER";
       return (
         <div className="flex min-h-screen items-center justify-center bg-background p-4">
           <div className="max-w-md w-full p-8 bg-card border border-amber-500/30 rounded-xl shadow-lg text-center space-y-4">
@@ -198,13 +198,61 @@ const App = () => {
       );
     }
 
+    // Synchronized REJECTED guard for Branch Manager and Cashier (Store Owner passes through to StoreDashboard to resubmit)
+    if (
+      effectiveStoreStatus === "REJECTED" &&
+      userProfile.role !== "ROLE_STORE_OWNER"
+    ) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-background p-4">
+          <div className="max-w-md w-full p-8 bg-card border border-orange-500/30 rounded-xl shadow-lg text-center space-y-4">
+            <div className="mx-auto w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center">
+              <AlertTriangle className="w-7 h-7 text-orange-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-foreground">
+              Store Registration Rejected
+            </h2>
+            <p className="text-sm font-medium text-orange-700">
+              {storeDisplayName} ({userProfile.fullName} — {userProfile.role})
+            </p>
+            <p className="text-muted-foreground text-sm">
+              The store this branch belongs to has been rejected during Super
+              Admin review. Branch management and POS sales remain unavailable
+              until the store owner updates and resubmits the registration for
+              approval.
+            </p>
+            {store?.rejectionReason && (
+              <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30 text-sm text-orange-800 dark:text-orange-200 text-left">
+                <strong>Rejection Reason:</strong> {store.rejectionReason}
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+              <button
+                onClick={fetchUserStore}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 border rounded-md hover:bg-muted transition-colors text-sm font-medium"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Check Status Again
+              </button>
+              <button
+                onClick={handleBackToLogin}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
+              >
+                <LogOut className="w-4 h-4" />
+                Back to Login
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // Orphaned / unassigned employee guard (e.g., when store or branch was deleted)
     const isBranchStaffRole =
-      userProfile.role === "ROLE_BRANCH_CASHIER" ||
+      userProfile.role === "ROLE_CASHIER" ||
       userProfile.role === "ROLE_BRANCH_MANAGER";
     const isOrphanedEmployee =
-      (userProfile.role === "ROLE_STORE_MANAGER" && (!store || !store.id)) ||
-      (isBranchStaffRole && (!userProfile.branchId || !store || !store.id));
+      isBranchStaffRole && (!userProfile.branchId || !store || !store.id);
 
     if (isOrphanedEmployee) {
       return (
@@ -245,7 +293,7 @@ const App = () => {
       );
     }
 
-    if (userProfile.role === "ROLE_BRANCH_CASHIER") {
+    if (userProfile.role === "ROLE_CASHIER") {
       return (
         <Routes>
           <Route path="/" element={<Navigate to="/cashier" replace />} />
@@ -255,11 +303,8 @@ const App = () => {
       );
     }
 
-    if (
-      userProfile.role === "ROLE_STORE_ADMIN" ||
-      userProfile.role === "ROLE_STORE_MANAGER"
-    ) {
-      if (userProfile.role === "ROLE_STORE_ADMIN" && (!store || !store.id)) {
+    if (userProfile.role === "ROLE_STORE_OWNER") {
+      if (!store || !store.id) {
         return (
           <Routes>
             <Route

@@ -1,16 +1,14 @@
 // File: src/pages/store/Dashboard/StoreTopbar.jsx
-import React, { useState } from "react";
-import { useSelector, useDispatch } from "react-redux";
+import React, { useState, useEffect, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router";
 import {
   Bell,
-  UserCircle,
   Search,
-  Settings,
-  LogOut,
   AlertTriangle,
   Store,
   Menu,
+  ArrowRightLeft,
 } from "lucide-react";
 import { ThemeToggle } from "../../../components/theme-toggle";
 import { Input } from "../../../components/ui/input";
@@ -23,14 +21,56 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
-import { logout } from "../../../Redux Toolkit/features/user/userThunks";
+import UserProfileMenu from "@/components/account/UserProfileMenu";
+import api from "@/utils/api";
+import { getStoreAlerts } from "@/Redux Toolkit/features/storeAnalytics/storeAnalyticsThunks";
 
 export default function StoreTopbar({ onOpenMobileMenu }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { userProfile } = useSelector((state) => state.user);
   const { store } = useSelector((state) => state.store);
+  const { userProfile } = useSelector((state) => state.user);
+  const { storeAlerts } = useSelector((state) => state.storeAnalytics);
   const [searchQuery, setSearchQuery] = useState("");
+  const [pendingTransferCount, setPendingTransferCount] = useState(0);
+  const fetchedAlertsForUserRef = useRef(null);
+
+  useEffect(() => {
+    if (!store?.id) return;
+    let mounted = true;
+    api
+      .get(`/api/branch-transfer-requests/store/${store.id}`)
+      .then((res) => {
+        if (mounted && Array.isArray(res.data)) {
+          setPendingTransferCount(
+            res.data.filter((r) => r.status === "PENDING").length,
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [store?.id]);
+
+  useEffect(() => {
+    if (
+      userProfile?.id &&
+      storeAlerts === null &&
+      fetchedAlertsForUserRef.current !== userProfile.id
+    ) {
+      fetchedAlertsForUserRef.current = userProfile.id;
+      dispatch(getStoreAlerts(userProfile.id));
+    }
+  }, [dispatch, userProfile?.id, storeAlerts]);
+
+  const lowStockCount = storeAlerts?.lowStockAlerts?.length || 0;
+  const inactiveCashiersCount = storeAlerts?.inactiveCashiers?.length || 0;
+  const noSaleTodayCount = storeAlerts?.noSaleToday?.length || 0;
+  const refundSpikeCount = storeAlerts?.refundSpike?.length || 0;
+  const alertCount =
+    lowStockCount + inactiveCashiersCount + noSaleTodayCount + refundSpikeCount;
+  const totalBadgeCount = alertCount + pendingTransferCount;
 
   const handleSearchKeyDown = (e) => {
     if (e.key === "Enter" && searchQuery.trim()) {
@@ -45,11 +85,6 @@ export default function StoreTopbar({ onOpenMobileMenu }) {
       else if (q.includes("rep")) navigate("/store/reports");
       else navigate("/store/products");
     }
-  };
-
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate("/auth/login");
   };
 
   return (
@@ -89,20 +124,39 @@ export default function StoreTopbar({ onOpenMobileMenu }) {
               aria-label="Notifications"
             >
               <Bell className="text-muted-foreground w-5 h-5" />
-              <span className="absolute top-0.5 right-0.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full px-1.5 py-0.5">
-                3
-              </span>
+              {totalBadgeCount > 0 && (
+                <span className="absolute top-0.5 right-0.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full px-1.5 py-0.5">
+                  {totalBadgeCount}
+                </span>
+              )}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72">
             <DropdownMenuLabel>Store Alerts & Notifications</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {pendingTransferCount > 0 && (
+              <DropdownMenuItem
+                onClick={() => navigate("/store/employees")}
+                className="cursor-pointer"
+              >
+                <ArrowRightLeft className="mr-2 h-4 w-4 text-amber-600" />
+                <span>
+                  {pendingTransferCount} đơn xin chuyển chi nhánh chờ duyệt
+                </span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onClick={() => navigate("/store/alerts")}
               className="cursor-pointer"
             >
               <AlertTriangle className="mr-2 h-4 w-4 text-amber-500" />
-              <span>View low stock & inactive cashier alerts</span>
+              <span>
+                {alertCount > 0
+                  ? `${alertCount} store alerts (${lowStockCount} low stock, ${
+                      inactiveCashiersCount + noSaleTodayCount + refundSpikeCount
+                    } ops)`
+                  : "No active store alerts"}
+              </span>
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => navigate("/store/sales")}
@@ -114,49 +168,7 @@ export default function StoreTopbar({ onOpenMobileMenu }) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <div className="flex items-center gap-2 cursor-pointer hover:opacity-90">
-              <span className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center font-bold text-primary shrink-0">
-                <UserCircle className="w-6 h-6" />
-              </span>
-              <div className="hidden sm:block text-left max-w-[160px]">
-                <p className="text-sm font-medium text-foreground leading-none truncate">
-                  {userProfile?.fullName || store?.brand || "Store Admin"}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                  {userProfile?.email || "Store Administrator"}
-                </p>
-              </div>
-            </div>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Store Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => navigate("/store/stores")}
-              className="cursor-pointer"
-            >
-              <Store className="mr-2 h-4 w-4" />
-              <span>Store Information</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => navigate("/store/settings")}
-              className="cursor-pointer"
-            >
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Settings</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleLogout}
-              className="cursor-pointer text-red-600"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              <span>Logout</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <UserProfileMenu />
       </div>
     </header>
   );

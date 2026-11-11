@@ -20,6 +20,9 @@ public class AuthController {
 
     private final AuthService authService;
 
+    @org.springframework.beans.factory.annotation.Value("${app.trust-proxy:false}")
+    private boolean trustProxy;
+
     @PostMapping("/signup")
     public ResponseEntity<AuthResponse> signupHandler(@RequestBody UserDto userDto) throws UserException {
         return ResponseEntity.ok(authService.signup(userDto));
@@ -78,9 +81,11 @@ public class AuthController {
     }
 
     private String extractClientIp(HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            return xff.split(",")[0].trim();
+        if (trustProxy) {
+            String xff = request.getHeader("X-Forwarded-For");
+            if (xff != null && !xff.isBlank()) {
+                return xff.split(",")[0].trim();
+            }
         }
         return request.getRemoteAddr();
     }

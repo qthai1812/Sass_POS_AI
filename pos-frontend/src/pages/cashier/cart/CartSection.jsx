@@ -23,15 +23,21 @@ const CartSection = ({ setShowHeldOrdersDialog }) => {
   const trackStock = hasFeature("inventory");
 
   const handleUpdateCartItemQuantity = (id, newQuantity) => {
-    if (newQuantity > 0 && trackStock) {
+    const existingItem = cartItems.find((item) => item.id === id);
+    const isDecreasing = existingItem && newQuantity < existingItem.quantity;
+
+    if (newQuantity > 0 && trackStock && !isDecreasing) {
       const inv = (inventories || []).find(
         (i) => (i.productId ?? i.product?.id) === id,
       );
       const maxAvailable = inv ? Number(inv.quantity ?? 0) : 0;
-      if (maxAvailable > 0 && newQuantity > maxAvailable) {
+      if (newQuantity > maxAvailable) {
         toast({
-          title: "Vượt quá tồn kho",
-          description: `Chi nhánh hiện chỉ còn tối đa ${maxAvailable} sản phẩm này trong kho.`,
+          title: maxAvailable <= 0 ? "Sản phẩm đã hết hàng" : "Vượt quá tồn kho",
+          description:
+            maxAvailable <= 0
+              ? "Sản phẩm này hiện không còn tồn kho tại chi nhánh."
+              : `Chi nhánh hiện chỉ còn tối đa ${maxAvailable} sản phẩm này trong kho.`,
           variant: "destructive",
         });
         return;

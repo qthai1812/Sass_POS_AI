@@ -16,16 +16,23 @@ import {
   selectCurrentOrder,
 } from "../../../../Redux Toolkit/features/cart/cartSlice";
 import { handleDownloadOrderPDF } from "../pdf/pdfUtils";
+import { getBranchPrinterSettings } from "@/utils/branchPrinterSettings";
 
 const InvoiceDialog = ({ showInvoiceDialog, setShowInvoiceDialog }) => {
-  let selectedOrder = useSelector(selectCurrentOrder);
+  const selectedOrder = useSelector(selectCurrentOrder);
+  const { store } = useSelector((state) => state.store);
+  const { branch } = useSelector((state) => state.branch);
   const { toast } = useToast();
   const dispatch = useDispatch();
+
+  const printerSettings = getBranchPrinterSettings();
+  const effectiveFooterText =
+    printerSettings.footerText?.trim() || store?.receiptFooter?.trim() || "";
 
   const handlePrintInvoice = () => {
     toast({
       title: "Printing Invoice",
-      description: `Preparing print view for Invoice #${selectedOrder?.id || ""}`,
+      description: `Preparing print view (${printerSettings.paperSize}) for Invoice #${selectedOrder?.id || ""}`,
     });
     setTimeout(() => {
       window.print();
@@ -49,18 +56,44 @@ const InvoiceDialog = ({ showInvoiceDialog, setShowInvoiceDialog }) => {
   return (
     <Dialog open={showInvoiceDialog} onOpenChange={setShowInvoiceDialog}>
       {selectedOrder && (
-        <DialogContent className="sm:max-w-2xl lg:max-w-3xl w-[95vw] max-h-[90vh] flex flex-col">
+        <DialogContent
+          overlayClassName="no-print"
+          data-paper-size={printerSettings.paperSize}
+          className="print-modal-root print-scroll-reset sm:max-w-2xl lg:max-w-3xl w-[95vw] max-h-[90vh] flex flex-col"
+        >
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">
               Order Details - Invoice #{selectedOrder.id}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-            <OrderDetails selectedOrder={selectedOrder} />
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 print-scroll-reset">
+            {printerSettings.printLogo && (store?.brand || branch?.name) && (
+              <div className="hidden print:block text-center border-b pb-2 mb-3">
+                <p className="font-bold text-base">
+                  {store?.brand || branch?.name}
+                </p>
+                {(branch?.address || store?.contact?.address) && (
+                  <p className="text-xs text-muted-foreground">
+                    {branch?.address || store?.contact?.address}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <OrderDetails
+              selectedOrder={selectedOrder}
+              printerSettings={printerSettings}
+            />
+
+            {effectiveFooterText && (
+              <p className="hidden print:block text-center text-xs text-muted-foreground border-t pt-3 mt-4">
+                {effectiveFooterText}
+              </p>
+            )}
           </div>
 
-          <DialogFooter className="gap-2 sm:justify-between pt-3 border-t">
+          <DialogFooter className="no-print gap-2 sm:justify-between pt-3 border-t">
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={handleDownloadPDF}>
                 <Download className="w-4 h-4 mr-2" />

@@ -7,6 +7,7 @@ import com.zosh.payload.response.ApiResponse;
 import com.zosh.service.BranchService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,12 +19,14 @@ public class BranchController {
 
     private final BranchService branchService;
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @PostMapping
     public ResponseEntity<BranchDTO> createBranch(@RequestBody BranchDTO branchDTO) throws UserException {
         BranchDTO createdBranch = branchService.createBranch(branchDTO);
         return ResponseEntity.ok(createdBranch);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/{id}")
     public ResponseEntity<BranchDTO> getBranchById(
             @PathVariable Long id
@@ -32,6 +35,7 @@ public class BranchController {
         return ResponseEntity.ok(createdBranch);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/store/{storeId}")
     public ResponseEntity<List<BranchDTO>> getAllBranchesByStoreId(
             @PathVariable Long storeId
@@ -40,6 +44,7 @@ public class BranchController {
         return ResponseEntity.ok(createdBranch);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER')")
     @PutMapping("/{id}")
     public ResponseEntity<BranchDTO> updateBranch(
             @PathVariable Long id,
@@ -49,6 +54,7 @@ public class BranchController {
         return ResponseEntity.ok(createdBranch);
     }
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse> deleteBranch(
             @PathVariable Long id

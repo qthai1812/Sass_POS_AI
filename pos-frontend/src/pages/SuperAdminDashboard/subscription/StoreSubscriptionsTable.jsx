@@ -81,6 +81,7 @@ export default function StoreSubscriptionsTable() {
             <option value="">Tất cả trạng thái</option>
             <option value="ACTIVE">ACTIVE</option>
             <option value="TRIAL">TRIAL</option>
+            <option value="PENDING">PENDING</option>
             <option value="EXPIRED">EXPIRED</option>
             <option value="CANCELLED">CANCELLED</option>
           </select>

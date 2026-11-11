@@ -3,9 +3,11 @@ package com.zosh.controller;
 import com.zosh.payload.dto.RefundDTO;
 import com.zosh.payload.response.ApiResponse;
 import com.zosh.service.RefundService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -18,18 +20,21 @@ public class RefundController {
 
     private final RefundService refundService;
 
+    @PreAuthorize("hasRole('CASHIER')")
     @PostMapping
-    public ResponseEntity<RefundDTO> createRefund(@RequestBody RefundDTO refundDTO) throws Exception {
+    public ResponseEntity<RefundDTO> createRefund(@Valid @RequestBody RefundDTO refundDTO) throws Exception {
         RefundDTO refund = refundService.createRefund(refundDTO);
         return ResponseEntity.ok(refund);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping
     public ResponseEntity<List<RefundDTO>> getAllRefund() throws Exception {
         List<RefundDTO> refund = refundService.getAllRefunds();
         return ResponseEntity.ok(refund);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/cashier/{cashierId}")
     public ResponseEntity<List<RefundDTO>> getRefundByCashier(
             @PathVariable Long cashierId
@@ -38,6 +43,7 @@ public class RefundController {
         return ResponseEntity.ok(refund);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/branch/{branchId}")
     public ResponseEntity<List<RefundDTO>> getRefundByBranch(
             @PathVariable Long branchId
@@ -46,6 +52,16 @@ public class RefundController {
         return ResponseEntity.ok(refund);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/order/{orderId}")
+    public ResponseEntity<List<RefundDTO>> getRefundByOrder(
+            @PathVariable Long orderId
+    ) throws Exception {
+        List<RefundDTO> refunds = refundService.getRefundsByOrderId(orderId);
+        return ResponseEntity.ok(refunds);
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/shift/{shiftId}")
     public ResponseEntity<List<RefundDTO>> getRefundByShift(
             @PathVariable Long shiftId
@@ -54,6 +70,7 @@ public class RefundController {
         return ResponseEntity.ok(refund);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/cashier/{cashierId}/range")
     public ResponseEntity<List<RefundDTO>> getRefundByCashierAndDateRange(
             @PathVariable Long cashierId,
@@ -66,6 +83,7 @@ public class RefundController {
         return ResponseEntity.ok(refund);
     }
 
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/{id}")
     public ResponseEntity<RefundDTO> getRefundById(
             @PathVariable Long id
@@ -74,6 +92,7 @@ public class RefundController {
         return ResponseEntity.ok(refund);
     }
 
+    @PreAuthorize("denyAll()")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse> deleteRefund(
             @PathVariable Long id
