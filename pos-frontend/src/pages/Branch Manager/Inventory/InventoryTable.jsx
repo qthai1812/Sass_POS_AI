@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Edit, AlertTriangle } from "lucide-react";
 
-const InventoryTable = ({ rows, inventories, onEdit }) => {
+const InventoryTable = ({ rows, inventories, onEdit, loading = false, footer = null }) => {
   const dataList = Array.isArray(rows)
     ? rows
     : Array.isArray(inventories)
@@ -36,7 +36,16 @@ const InventoryTable = ({ rows, inventories, onEdit }) => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {dataList.length === 0 ? (
+            {loading ? (
+              <TableRow>
+                <TableCell
+                  colSpan={6}
+                  className="text-center py-10 text-muted-foreground"
+                >
+                  Loading inventory...
+                </TableCell>
+              </TableRow>
+            ) : dataList.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={6}
@@ -116,6 +125,7 @@ const InventoryTable = ({ rows, inventories, onEdit }) => {
           </TableBody>
         </Table>
       </CardContent>
+      {footer}
     </Card>
   );
 };

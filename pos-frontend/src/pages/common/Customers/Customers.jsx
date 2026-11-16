@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -33,19 +33,27 @@ import {
 } from "lucide-react";
 import { getStatusColor } from "@/utils/getStatusColor";
 import {
-  getAllCustomers,
+  getCustomersPaged,
+  getCustomerSummary,
   updateCustomer,
   deleteCustomer,
 } from "@/Redux Toolkit/features/customer/customerThunks";
 import { getOrdersByCustomer } from "@/Redux Toolkit/features/order/orderThunks";
 import { clearCustomerOrders } from "@/Redux Toolkit/features/order/orderSlice";
+import DataTablePagination from "@/components/ui/data-table-pagination";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 import { useToast } from "@/components/ui/use-toast";
 import AddPointsDialog from "@/pages/cashier/customer/components/AddPointsDialog";
 import { getLoyaltyTier } from "@/pages/cashier/customer/components/CustomerDetails";
 
 const Customers = ({ scope = "BRANCH" }) => {
   const isStoreScope = scope === "STORE";
-  const { customers = [], loading } = useSelector((state) => state.customer);
+  const {
+    pagedCustomers,
+    pagedLoading: loading,
+    customerSummary,
+  } = useSelector((state) => state.customer);
+  const customers = pagedCustomers?.content || [];
   const { customerOrders = [], loading: ordersLoading } = useSelector(
     (state) => state.order,
   );
@@ -53,6 +61,9 @@ const Customers = ({ scope = "BRANCH" }) => {
   const { toast } = useToast();
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [showAddPointsDialog, setShowAddPointsDialog] = useState(false);
@@ -61,20 +72,42 @@ const Customers = ({ scope = "BRANCH" }) => {
   const [deletingCustomer, setDeletingCustomer] = useState(false);
 
   useEffect(() => {
-    dispatch(getAllCustomers());
-  }, [dispatch]);
+    const next = searchTerm.trim();
+    if (next === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setPage(0);
+      setDebouncedSearch(next);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearch]);
 
-  const filteredCustomers = (customers || []).filter((customer) => {
-    const q = searchTerm.toLowerCase();
-    return (
-      (customer.fullName?.toLowerCase() || "").includes(q) ||
-      (customer.phone || "").includes(searchTerm) ||
-      (customer.email?.toLowerCase() || "").includes(q)
+  const fetchPagedCustomers = useCallback(() => {
+    dispatch(
+      getCustomersPaged({
+        keyword: debouncedSearch,
+        page,
+        size: pageSize,
+        sortBy: "createdAt",
+        sortDir: "desc",
+      }),
     );
-  });
+  }, [dispatch, debouncedSearch, page, pageSize]);
+
+  useEffect(() => {
+    fetchPagedCustomers();
+  }, [fetchPagedCustomers]);
+
+  useEffect(() => {
+    dispatch(getCustomerSummary());
+  }, [dispatch]);
 
   const handleSearch = (e) => {
     setSearchTerm(e.target.value);
+  };
+
+  const handlePageSizeChange = (nextSize) => {
+    setPageSize(nextSize);
+    setPage(0);
   };
 
   const handleOpenCustomerDialog = (customer) => {
@@ -102,6 +135,7 @@ const Customers = ({ scope = "BRANCH" }) => {
       setSelectedCustomer(updated);
       setShowAddPointsDialog(false);
       setPointsToAdd(0);
+      dispatch(getCustomerSummary());
       toast({
         title: "Points Updated",
         description: `Đã cộng +${pointsToAdd} điểm cho ${updated.fullName} (Tổng: ${updated.loyaltyPoints} điểm)`,
@@ -129,6 +163,12 @@ const Customers = ({ scope = "BRANCH" }) => {
         setSelectedCustomer(null);
       }
       setCustomerToDelete(null);
+      dispatch(getCustomerSummary());
+      if (customers.length === 1 && page > 0) {
+        setPage((prev) => Math.max(0, prev - 1));
+      } else {
+        fetchPagedCustomers();
+      }
     } catch (err) {
       toast({
         title: "Không thể xóa khách hàng",
@@ -142,14 +182,9 @@ const Customers = ({ scope = "BRANCH" }) => {
     }
   };
 
-  // Thống kê chính xác từ dữ liệu thực tế
-  const goldAndDiamondCount = customers.filter(
-    (c) => Number(c.loyaltyPoints || 0) >= 100,
-  ).length;
-  const totalLoyaltyPoints = customers.reduce(
-    (sum, c) => sum + Number(c.loyaltyPoints || 0),
-    0,
-  );
+  const totalCustomers = Number(customerSummary?.totalCustomers || 0);
+  const goldAndDiamondCount = Number(customerSummary?.goldAndDiamondCount || 0);
+  const totalLoyaltyPoints = Number(customerSummary?.totalLoyaltyPoints || 0);
 
   return (
     <div className="space-y-6">
@@ -197,7 +232,7 @@ const Customers = ({ scope = "BRANCH" }) => {
                 Total Customers
               </h3>
               <p className="text-2xl sm:text-3xl font-bold mt-2">
-                {customers.length}
+                {totalCustomers.toLocaleString("vi-VN")}
               </p>
             </div>
           </CardContent>
@@ -253,8 +288,8 @@ const Customers = ({ scope = "BRANCH" }) => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCustomers.length > 0 ? (
-                  filteredCustomers.map((customer) => {
+                {customers.length > 0 ? (
+                  customers.map((customer) => {
                     const pts = Number(customer.loyaltyPoints || 0);
                     const tier = getLoyaltyTier(pts);
                     return (
@@ -322,6 +357,17 @@ const Customers = ({ scope = "BRANCH" }) => {
             </Table>
           )}
         </CardContent>
+        <DataTablePagination
+          page={pagedCustomers?.pageNumber ?? page}
+          pageSize={pagedCustomers?.pageSize ?? pageSize}
+          totalElements={pagedCustomers?.totalElements ?? 0}
+          totalPages={pagedCustomers?.totalPages ?? 0}
+          currentCount={customers.length}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+          loading={loading}
+          itemLabel="customers"
+        />
       </Card>
 
       {/* Customer Details Dialog */}

@@ -267,6 +267,82 @@ export const getRecentOrdersByBranch = createAsyncThunk(
 );
 
 
+// 🔹 Get Orders by Branch (Paged, server-side filtered & sorted)
+export const getOrdersByBranchPaged = createAsyncThunk(
+  'order/getByBranchPaged',
+  async (
+    {
+      branchId,
+      customerId,
+      cashierId,
+      paymentType,
+      status,
+      keyword = '',
+      page = 0,
+      size = 10,
+      sortBy = 'createdAt',
+      sortDir = 'desc',
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const headers = getAuthHeaders();
+      const params = { page, size, sortBy, sortDir };
+      if (customerId) params.customerId = customerId;
+      if (cashierId) params.cashierId = cashierId;
+      if (paymentType) params.paymentType = paymentType;
+      if (status) params.status = status;
+      if (keyword && keyword.trim()) params.keyword = keyword.trim();
+
+      const res = await api.get(`/api/orders/branch/${branchId}/paged`, {
+        headers,
+        params,
+      });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || 'Failed to fetch orders'
+      );
+    }
+  }
+);
+
+// 🔹 Get Orders by Cashier (Paged, server-side search & date filter)
+export const getOrdersByCashierPaged = createAsyncThunk(
+  'order/getByCashierPaged',
+  async (
+    {
+      cashierId,
+      keyword = '',
+      startDate,
+      endDate,
+      page = 0,
+      size = 10,
+      sortBy = 'createdAt',
+      sortDir = 'desc',
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const headers = getAuthHeaders();
+      const params = { page, size, sortBy, sortDir };
+      if (keyword && keyword.trim()) params.keyword = keyword.trim();
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+
+      const res = await api.get(`/api/orders/cashier/${cashierId}/paged`, {
+        headers,
+        params,
+      });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || 'Failed to fetch cashier orders'
+      );
+    }
+  }
+);
+
 // Update Order Status (PENDING -> COMPLETED / CANCELLED)
 export const updateOrderStatus = createAsyncThunk(
   'order/updateStatus',

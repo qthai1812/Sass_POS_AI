@@ -173,6 +173,38 @@ export const getAllSubscriptions = createAsyncThunk(
   },
 );
 
+// Admin: Get all subscriptions (Paged, supports status & expiringDays)
+export const getAllSubscriptionsPaged = createAsyncThunk(
+  "subscription/getAllPaged",
+  async (
+    {
+      status,
+      expiringDays,
+      page = 0,
+      size = 10,
+      sortBy = "createdAt",
+      sortDir = "desc",
+    } = {},
+    { rejectWithValue },
+  ) => {
+    try {
+      const headers = getAuthHeaders();
+      const params = { page, size, sortBy, sortDir };
+      if (status) params.status = status;
+      if (expiringDays != null) params.expiringDays = expiringDays;
+      const res = await api.get("/api/subscriptions/admin/paged", {
+        headers,
+        params,
+      });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch paged subscriptions",
+      );
+    }
+  },
+);
+
 // Admin: Get subscriptions expiring within X days
 export const getExpiringSubscriptions = createAsyncThunk(
   "subscription/getExpiringSubscriptions",

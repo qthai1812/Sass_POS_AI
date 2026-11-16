@@ -1,9 +1,12 @@
 package com.zosh.repository;
 
 import com.zosh.domain.OrderStatus;
+import com.zosh.domain.PaymentType;
 import com.zosh.modal.Order;
 import com.zosh.modal.User;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -123,4 +126,88 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             GROUP BY o.branch.store.id
             """)
     List<Object[]> sumCompletedSalesGroupedByStore();
+
+    @Query(
+            value = """
+                    SELECT o.id FROM Order o
+                    LEFT JOIN o.customer c
+                    LEFT JOIN o.cashier ca
+                    WHERE o.branch.id = :branchId
+                      AND (:customerId IS NULL OR c.id = :customerId)
+                      AND (:cashierId IS NULL OR ca.id = :cashierId)
+                      AND (:paymentType IS NULL OR o.paymentType = :paymentType)
+                      AND (:status IS NULL OR o.status = :status)
+                      AND (
+                          :keyword IS NULL OR :keyword = ''
+                          OR CAST(o.id AS string) LIKE CONCAT('%', :keyword, '%')
+                          OR LOWER(COALESCE(c.fullName, 'Walk-in Customer')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                          OR LOWER(COALESCE(CAST(o.paymentType AS string), 'CASH')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                      )
+                    """,
+            countQuery = """
+                    SELECT COUNT(o.id) FROM Order o
+                    LEFT JOIN o.customer c
+                    LEFT JOIN o.cashier ca
+                    WHERE o.branch.id = :branchId
+                      AND (:customerId IS NULL OR c.id = :customerId)
+                      AND (:cashierId IS NULL OR ca.id = :cashierId)
+                      AND (:paymentType IS NULL OR o.paymentType = :paymentType)
+                      AND (:status IS NULL OR o.status = :status)
+                      AND (
+                          :keyword IS NULL OR :keyword = ''
+                          OR CAST(o.id AS string) LIKE CONCAT('%', :keyword, '%')
+                          OR LOWER(COALESCE(c.fullName, 'Walk-in Customer')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                          OR LOWER(COALESCE(CAST(o.paymentType AS string), 'CASH')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                      )
+                    """
+    )
+    Page<Long> findBranchOrderIdsPaged(
+            @Param("branchId") Long branchId,
+            @Param("customerId") Long customerId,
+            @Param("cashierId") Long cashierId,
+            @Param("paymentType") PaymentType paymentType,
+            @Param("status") OrderStatus status,
+            @Param("keyword") String keyword,
+            Pageable pageable
+    );
+
+    @Query(
+            value = """
+                    SELECT o.id FROM Order o
+                    LEFT JOIN o.customer c
+                    WHERE o.cashier.id = :cashierId
+                      AND (:fromDate IS NULL OR o.createdAt >= :fromDate)
+                      AND (:toDate IS NULL OR o.createdAt <= :toDate)
+                      AND (
+                          :keyword IS NULL OR :keyword = ''
+                          OR CAST(o.id AS string) LIKE CONCAT('%', :keyword, '%')
+                          OR LOWER(COALESCE(c.fullName, 'Walk-in Customer')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                          OR COALESCE(c.phone, '') LIKE CONCAT('%', :keyword, '%')
+                      )
+                    """,
+            countQuery = """
+                    SELECT COUNT(o.id) FROM Order o
+                    LEFT JOIN o.customer c
+                    WHERE o.cashier.id = :cashierId
+                      AND (:fromDate IS NULL OR o.createdAt >= :fromDate)
+                      AND (:toDate IS NULL OR o.createdAt <= :toDate)
+                      AND (
+                          :keyword IS NULL OR :keyword = ''
+                          OR CAST(o.id AS string) LIKE CONCAT('%', :keyword, '%')
+                          OR LOWER(COALESCE(c.fullName, 'Walk-in Customer')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                          OR COALESCE(c.phone, '') LIKE CONCAT('%', :keyword, '%')
+                      )
+                    """
+    )
+    Page<Long> findCashierOrderIdsPaged(
+            @Param("cashierId") Long cashierId,
+            @Param("keyword") String keyword,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = {"items", "items.product", "items.product.category", "cashier", "customer", "branch"})
+    @Query("SELECT DISTINCT o FROM Order o WHERE o.id IN :ids")
+    List<Order> findAllWithDetailsByIdIn(@Param("ids") List<Long> ids);
 }

@@ -8,6 +8,8 @@ import com.zosh.modal.ShiftReport;
 import com.zosh.modal.Store;
 import com.zosh.modal.User;
 import com.zosh.payload.dto.StoreDTO;
+import com.zosh.payload.dto.StoreSummaryDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.ShiftReportRepository;
 import com.zosh.repository.StoreRepository;
 import com.zosh.repository.UserRepository;
@@ -16,7 +18,10 @@ import com.zosh.service.StoreService;
 import com.zosh.service.UserService;
 import com.zosh.service.store.StoreCascadeDeletionService;
 import com.zosh.service.store.StoreRevenueEnricher;
+import com.zosh.util.PaginationUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,10 +29,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class StoreServiceImpl implements StoreService {
+
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "brand", "status", "commissionRate", "createdAt", "updatedAt"
+    );
 
     private final StoreRepository storeRepository;
     private final UserRepository userRepository;
@@ -113,6 +123,63 @@ public class StoreServiceImpl implements StoreService {
         }
 
         return storeRevenueEnricher.toEnrichedDTOList(stores);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<StoreDTO> getAllStoresPaged(
+            StoreStatus status,
+            String keyword,
+            int page,
+            int size,
+            String sortBy,
+            String sortDir
+    ) throws Exception {
+        User currentUser = userService.getCurrentUser();
+        if (currentUser == null || currentUser.getRole() != UserRole.ROLE_SUPER_ADMIN) {
+            throw new AccessDeniedException("Only Super Admin can list all stores with pagination");
+        }
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_SORT_FIELDS, "createdAt"
+        );
+        String cleanKeyword = keyword != null ? keyword.trim() : "";
+        Page<Store> storePage = storeRepository.findStoresPaged(status, cleanKeyword, pageable);
+        List<StoreDTO> enriched = storePage.getContent().isEmpty()
+                ? Collections.emptyList()
+                : storeRevenueEnricher.toEnrichedDTOList(storePage.getContent());
+        return PageResponse.of(storePage, enriched);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StoreSummaryDTO getStoreSummary() throws Exception {
+        User currentUser = userService.getCurrentUser();
+        if (currentUser == null || currentUser.getRole() != UserRole.ROLE_SUPER_ADMIN) {
+            throw new AccessDeniedException("Only Super Admin can access store platform summary");
+        }
+        long totalStores = storeRepository.count();
+        long activeStores = safeCount(storeRepository.countByStatus(StoreStatus.ACTIVE));
+        long pendingStores = safeCount(storeRepository.countByStatus(StoreStatus.PENDING));
+        long blockedStores = safeCount(storeRepository.countByStatus(StoreStatus.BLOCKED));
+        long rejectedStores = safeCount(storeRepository.countByStatus(StoreStatus.REJECTED));
+        Double avgRate = storeRepository.findAverageCommissionRate();
+        double roundedAvg = avgRate != null ? Math.round(avgRate * 10.0) / 10.0 : 0.0;
+        double totalEarnings = storeRevenueEnricher.computeTotalPlatformEarnings(
+                storeRepository.findAllIdAndCommissionRate()
+        );
+        return StoreSummaryDTO.builder()
+                .totalStores(totalStores)
+                .activeStores(activeStores)
+                .pendingStores(pendingStores)
+                .blockedStores(blockedStores)
+                .rejectedStores(rejectedStores)
+                .averageCommissionRate(roundedAvg)
+                .totalEarnings(totalEarnings)
+                .build();
+    }
+
+    private long safeCount(Long val) {
+        return val != null ? val : 0L;
     }
 
     @Override

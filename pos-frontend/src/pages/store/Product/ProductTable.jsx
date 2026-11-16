@@ -8,12 +8,12 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2, Tag, DollarSign, Eye } from "lucide-react";
+import { Edit, Trash2, Tag, Eye } from "lucide-react";
 import { useDispatch } from "react-redux";
 import { deleteProduct } from "@/Redux Toolkit/features/product/productThunks";
 import { toast } from "@/components/ui/use-toast";
 
-const ProductTable = ({ products = [], loading, onEdit, onView }) => {
+const ProductTable = ({ products = [], loading, onEdit, onView, onDeleted }) => {
   const dispatch = useDispatch();
 
   const handleDeleteProduct = async (id) => {
@@ -24,6 +24,7 @@ const ProductTable = ({ products = [], loading, onEdit, onView }) => {
       const token = localStorage.getItem("jwt");
       await dispatch(deleteProduct({ id, token })).unwrap();
       toast({ title: "Success", description: "Product deleted successfully" });
+      onDeleted?.(id);
     } catch (err) {
       toast({
         title: "Error",
@@ -112,12 +113,12 @@ const ProductTable = ({ products = [], loading, onEdit, onView }) => {
                 </div>
               </TableCell>
               <TableCell>
-                <div className="flex items-center gap-1">
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />đ
+                <span className="font-medium whitespace-nowrap">
+                  ₫
                   {Number(
                     product.sellingPrice ?? product.price ?? 0,
-                  ).toLocaleString()}
-                </div>
+                  ).toLocaleString("vi-VN")}
+                </span>
               </TableCell>
 
               <TableCell className="text-right">

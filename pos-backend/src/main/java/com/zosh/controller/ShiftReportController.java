@@ -2,6 +2,7 @@ package com.zosh.controller;
 
 import com.zosh.payload.dto.ShiftReportDTO;
 import com.zosh.payload.response.ApiResponse;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.service.ShiftReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -53,6 +54,17 @@ public class ShiftReportController {
         return ResponseEntity.ok(shiftReportService.getAllShiftReports());
     }
 
+    @PreAuthorize("hasRole('STORE_OWNER')")
+    @GetMapping("/paged")
+    public ResponseEntity<PageResponse<ShiftReportDTO>> getAllShiftReportsPaged(
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "shiftStart") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir
+    ) {
+        return ResponseEntity.ok(shiftReportService.getAllShiftReportsPaged(page, size, sortBy, sortDir));
+    }
+
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/cashier/{cashierId}/by-date")
     public ResponseEntity<ShiftReportDTO> getShiftReportByDate(
@@ -75,12 +87,40 @@ public class ShiftReportController {
     }
 
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/cashier/{cashierId}/paged")
+    public ResponseEntity<PageResponse<ShiftReportDTO>> getShiftReportByCashierPaged(
+            @PathVariable Long cashierId,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "shiftStart") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir
+    ) throws Exception {
+        return ResponseEntity.ok(
+                shiftReportService.getShiftReportsByCashierIdPaged(cashierId, page, size, sortBy, sortDir)
+        );
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/branch/{branchId}")
     public ResponseEntity<List<ShiftReportDTO>> getShiftReportByBranch(
             @PathVariable Long branchId
     ) throws Exception {
         return ResponseEntity.ok(
                 shiftReportService.getShiftReportsByBranchId(branchId)
+        );
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/branch/{branchId}/paged")
+    public ResponseEntity<PageResponse<ShiftReportDTO>> getShiftReportByBranchPaged(
+            @PathVariable Long branchId,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "shiftStart") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir
+    ) throws Exception {
+        return ResponseEntity.ok(
+                shiftReportService.getShiftReportsByBranchIdPaged(branchId, page, size, sortBy, sortDir)
         );
     }
 

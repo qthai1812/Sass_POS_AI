@@ -6,6 +6,8 @@ import com.zosh.domain.UserRole;
 import com.zosh.modal.*;
 import com.zosh.payload.dto.RefundDTO;
 import com.zosh.payload.dto.RefundItemDTO;
+import com.zosh.payload.response.PageResponse;
+import com.zosh.repository.BranchRepository;
 import com.zosh.repository.OrderRepository;
 import com.zosh.repository.RefundRepository;
 import com.zosh.repository.ShiftReportRepository;
@@ -19,6 +21,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.util.Collections;
@@ -33,6 +39,7 @@ import static org.mockito.Mockito.*;
 class RefundServiceImplTest {
 
     @Mock private UserService userService;
+    @Mock private BranchRepository branchRepository;
     @Mock private OrderRepository orderRepository;
     @Mock private RefundRepository refundRepository;
     @Mock private ShiftReportRepository shiftReportRepository;
@@ -452,5 +459,38 @@ class RefundServiceImplTest {
         assertThrows(AccessDeniedException.class, () -> refundService.createRefund(req));
         verify(inventoryCoordinator, never()).restoreByProduct(anyMap(), anyLong(), anyLong());
         verify(refundRepository, never()).save(any());
+    }
+
+    @Test
+    void getRefundsByBranchPaged_preservesTwoStepIdOrder() throws Exception {
+        when(branchRepository.findById(10L)).thenReturn(Optional.of(branch));
+        when(userService.getCurrentUser()).thenReturn(cashier);
+
+        Page<Long> idPage = new PageImpl<>(List.of(902L, 901L), PageRequest.of(0, 10), 2);
+        when(refundRepository.findBranchRefundIdsPaged(eq(10L), any(Pageable.class))).thenReturn(idPage);
+
+        Refund r901 = Refund.builder().id(901L).branch(branch).order(completedOrder).amount(50000.0).build();
+        Refund r902 = Refund.builder().id(902L).branch(branch).order(completedOrder).amount(75000.0).build();
+        when(refundRepository.findAllWithDetailsByIdIn(List.of(902L, 901L))).thenReturn(List.of(r901, r902));
+
+        PageResponse<RefundDTO> res = refundService.getRefundsByBranchPaged(10L, 0, 10, "createdAt", "desc");
+
+        assertEquals(2, res.getContent().size());
+        assertEquals(902L, res.getContent().get(0).getId());
+        assertEquals(901L, res.getContent().get(1).getId());
+    }
+
+    @Test
+    void getRefundsByBranchPaged_emptyPage_skipsDetailQuery() throws Exception {
+        when(branchRepository.findById(10L)).thenReturn(Optional.of(branch));
+        when(userService.getCurrentUser()).thenReturn(cashier);
+
+        Page<Long> empty = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
+        when(refundRepository.findBranchRefundIdsPaged(eq(10L), any(Pageable.class))).thenReturn(empty);
+
+        PageResponse<RefundDTO> res = refundService.getRefundsByBranchPaged(10L, 0, 10, "createdAt", "desc");
+
+        assertTrue(res.getContent().isEmpty());
+        verify(refundRepository, never()).findAllWithDetailsByIdIn(anyList());
     }
 }

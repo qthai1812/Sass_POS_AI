@@ -3,7 +3,9 @@ import {
   createOrder,
   getOrderById,
   getOrdersByBranch,
+  getOrdersByBranchPaged,
   getOrdersByCashier,
+  getOrdersByCashierPaged,
   getTodayOrdersByBranch,
   deleteOrder,
   getOrdersByCustomer,
@@ -11,9 +13,16 @@ import {
   updateOrderStatus,
 } from './orderThunks';
 import { createRefund } from '../refund/refundThunks';
+import { normalizePageResponse } from '@/utils/paginationUtils';
+
+const createEmptyOrderPage = () => normalizePageResponse(null);
 
 const initialState = {
   orders: [],
+  pagedBranchOrders: createEmptyOrderPage(),
+  pagedBranchLoading: false,
+  pagedCashierOrders: createEmptyOrderPage(),
+  pagedCashierLoading: false,
   todayOrders: [],
   customerOrders: [],
   selectedOrder: null,
@@ -28,6 +37,8 @@ const orderSlice = createSlice({
   reducers: {
     clearOrderState: (state) => {
       state.orders = [];
+      state.pagedBranchOrders = createEmptyOrderPage();
+      state.pagedCashierOrders = createEmptyOrderPage();
       state.todayOrders = [];
       state.customerOrders = [];
       state.selectedOrder = null;
@@ -73,9 +84,35 @@ const orderSlice = createSlice({
         state.orders = action.payload;
       })
 
+      .addCase(getOrdersByBranchPaged.pending, (state) => {
+        state.pagedBranchLoading = true;
+        state.error = null;
+      })
+      .addCase(getOrdersByBranchPaged.fulfilled, (state, action) => {
+        state.pagedBranchLoading = false;
+        state.pagedBranchOrders = normalizePageResponse(action.payload);
+      })
+      .addCase(getOrdersByBranchPaged.rejected, (state, action) => {
+        state.pagedBranchLoading = false;
+        state.error = action.payload;
+      })
+
       .addCase(getOrdersByCashier.fulfilled, (state, action) => {
         state.orders = action.payload;
         console.log("get order by cashier ", action.payload);
+      })
+
+      .addCase(getOrdersByCashierPaged.pending, (state) => {
+        state.pagedCashierLoading = true;
+        state.error = null;
+      })
+      .addCase(getOrdersByCashierPaged.fulfilled, (state, action) => {
+        state.pagedCashierLoading = false;
+        state.pagedCashierOrders = normalizePageResponse(action.payload);
+      })
+      .addCase(getOrdersByCashierPaged.rejected, (state, action) => {
+        state.pagedCashierLoading = false;
+        state.error = action.payload;
       })
 
       .addCase(getTodayOrdersByBranch.fulfilled, (state, action) => {
@@ -95,6 +132,8 @@ const orderSlice = createSlice({
         const keepNotDeleted = (o) => Number(o?.id) !== deletedId;
 
         state.orders = (state.orders || []).filter(keepNotDeleted);
+        state.pagedBranchOrders.content = (state.pagedBranchOrders.content || []).filter(keepNotDeleted);
+        state.pagedCashierOrders.content = (state.pagedCashierOrders.content || []).filter(keepNotDeleted);
         state.todayOrders = (state.todayOrders || []).filter(keepNotDeleted);
         state.customerOrders = (state.customerOrders || []).filter(keepNotDeleted);
         state.recentOrders = (state.recentOrders || []).filter(keepNotDeleted);
@@ -112,9 +151,11 @@ const orderSlice = createSlice({
         state.loading = false;
         const updated = action.payload;
         const replaceOrder = (list) =>
-          list.map((o) => (o.id === updated.id ? updated : o));
+          (list || []).map((o) => (o.id === updated.id ? updated : o));
 
         state.orders = replaceOrder(state.orders);
+        state.pagedBranchOrders.content = replaceOrder(state.pagedBranchOrders.content);
+        state.pagedCashierOrders.content = replaceOrder(state.pagedCashierOrders.content);
         state.todayOrders = replaceOrder(state.todayOrders);
         state.customerOrders = replaceOrder(state.customerOrders);
         state.recentOrders = replaceOrder(state.recentOrders);
@@ -131,18 +172,29 @@ const orderSlice = createSlice({
         const refund = action.payload;
         if (!refund?.orderId) return;
         const targetOrderId = Number(refund.orderId);
+        const refundAmount = Number(refund.amount || 0);
         const markRefundedStatus = (order) => {
           if (!order || Number(order.id) !== targetOrderId) return order;
           const currentStatus = String(order.status || "").toUpperCase();
-          if (currentStatus === "REFUNDED") return order;
+          const nextRefundedAmount =
+            Math.round((Number(order.refundedAmount || 0) + refundAmount) * 100) / 100;
+          if (currentStatus === "REFUNDED") {
+            return { ...order, refundedAmount: nextRefundedAmount };
+          }
           const total = Number(order.totalAmount || 0);
           const nextStatus =
-            total > 0 && Number(refund.amount || 0) >= total - 0.01
+            total > 0 && nextRefundedAmount >= total - 0.01
               ? "REFUNDED"
               : "PARTIALLY_REFUNDED";
-          return { ...order, status: nextStatus };
+          return {
+            ...order,
+            status: nextStatus,
+            refundedAmount: nextRefundedAmount,
+          };
         };
         state.orders = (state.orders || []).map(markRefundedStatus);
+        state.pagedBranchOrders.content = (state.pagedBranchOrders.content || []).map(markRefundedStatus);
+        state.pagedCashierOrders.content = (state.pagedCashierOrders.content || []).map(markRefundedStatus);
         state.todayOrders = (state.todayOrders || []).map(markRefundedStatus);
         state.customerOrders = (state.customerOrders || []).map(markRefundedStatus);
         state.recentOrders = (state.recentOrders || []).map(markRefundedStatus);

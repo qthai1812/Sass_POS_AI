@@ -5,6 +5,7 @@ import com.zosh.domain.StoreStatus;
 import com.zosh.domain.UserRole;
 import com.zosh.modal.*;
 import com.zosh.payload.dto.ShiftReportDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.*;
 import com.zosh.service.AccessControlService;
 import com.zosh.service.UserService;
@@ -16,6 +17,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.time.LocalDateTime;
@@ -227,5 +232,45 @@ class ShiftReportServiceImplTest {
         when(accessControl.canManageBranch(stranger, branch)).thenReturn(false);
 
         assertThrows(AccessDeniedException.class, () -> shiftReportService.getShiftReportById(40L));
+    }
+
+    @Test
+    void getShiftReportsByBranchIdPaged_forCashier_filtersToOwnShiftsInSql() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(cashier);
+        when(branchRepository.findById(10L)).thenReturn(Optional.of(branch));
+
+        Page<Long> idPage = new PageImpl<>(List.of(77L), PageRequest.of(0, 10), 1);
+        when(shiftReportRepository.findShiftIdsByBranchAndCashierPaged(eq(10L), eq(100L), any(Pageable.class)))
+                .thenReturn(idPage);
+
+        ShiftReport closed = ShiftReport.builder()
+                .id(77L).cashier(cashier).branch(branch)
+                .shiftStart(LocalDateTime.now().minusHours(9))
+                .shiftEnd(LocalDateTime.now().minusHours(1))
+                .totalSales(200000.0).totalRefunds(0.0).netSale(200000.0).totalOrders(2)
+                .build();
+        when(shiftReportRepository.findAllWithDetailsByIdIn(List.of(77L))).thenReturn(List.of(closed));
+
+        PageResponse<ShiftReportDTO> res = shiftReportService.getShiftReportsByBranchIdPaged(10L, 0, 10, "shiftStart", "desc");
+
+        verify(shiftReportRepository).findShiftIdsByBranchAndCashierPaged(eq(10L), eq(100L), any(Pageable.class));
+        verify(shiftReportRepository, never()).findShiftIdsByBranchPaged(anyLong(), any());
+        assertEquals(1, res.getContent().size());
+        assertEquals(77L, res.getContent().get(0).getId());
+    }
+
+    @Test
+    void getAllShiftReportsPaged_forOwner_queriesStoreScopedShifts() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(owner);
+        when(accessControl.resolveStoreOfUser(owner)).thenReturn(activeStore);
+
+        Page<Long> emptyPage = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
+        when(shiftReportRepository.findShiftIdsByStorePaged(eq(1L), any(Pageable.class))).thenReturn(emptyPage);
+
+        PageResponse<ShiftReportDTO> res = shiftReportService.getAllShiftReportsPaged(0, 10, "shiftStart", "desc");
+
+        assertTrue(res.getContent().isEmpty());
+        verify(shiftReportRepository).findShiftIdsByStorePaged(eq(1L), any(Pageable.class));
+        verify(shiftReportRepository, never()).findAllWithDetailsByIdIn(anyList());
     }
 }

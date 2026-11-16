@@ -1,14 +1,18 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Button } from "@/components/ui/button";
 import { Upload, Plus, Download } from "lucide-react";
 import {
   getInventoryByBranch,
+  getInventoryByBranchPaged,
+  getInventorySummaryByBranch,
   createInventory,
   updateInventory,
 } from "@/Redux Toolkit/features/inventory/inventoryThunks";
 import { getProductsByStore } from "@/Redux Toolkit/features/product/productThunks";
 import { getCategoriesByStore } from "@/Redux Toolkit/features/category/categoryThunks";
+import DataTablePagination from "@/components/ui/data-table-pagination";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 import InventoryTable from "./InventoryTable";
 import InventoryFilters from "./InventoryFilters";
 import InventoryFormDialog from "./InventoryFormDialog";
@@ -20,12 +24,21 @@ const Inventory = () => {
   const fileInputRef = useRef(null);
 
   const branch = useSelector((state) => state.branch?.branch);
-  const { inventories = [] } = useSelector((state) => state.inventory || {});
+  const {
+    pagedInventories,
+    pagedLoading: loading,
+    inventorySummary,
+  } = useSelector((state) => state.inventory || {});
+  const inventories = pagedInventories?.content || [];
   const { products = [] } = useSelector((state) => state.product || {});
   const { categories = [] } = useSelector((state) => state.category || {});
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("all");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [exporting, setExporting] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -35,9 +48,16 @@ const Inventory = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (branch?.id) {
-      dispatch(getInventoryByBranch(branch.id));
-    }
+    const next = searchTerm.trim();
+    if (next === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setPage(0);
+      setDebouncedSearch(next);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearch]);
+
+  useEffect(() => {
     if (branch?.storeId) {
       dispatch(getProductsByStore(branch.storeId));
       dispatch(
@@ -47,51 +67,78 @@ const Inventory = () => {
         }),
       );
     }
-  }, [branch, dispatch]);
+  }, [branch?.storeId, dispatch]);
 
-  const getProductInfo = (inv) => {
-    const safeProducts = Array.isArray(products) ? products : [];
-    const safeCategories = Array.isArray(categories) ? categories : [];
+  const fetchInventoryPageAndSummary = useCallback(() => {
+    if (!branch?.id) return;
+    dispatch(
+      getInventoryByBranchPaged({
+        branchId: branch.id,
+        keyword: debouncedSearch,
+        category,
+        page,
+        size: pageSize,
+        sortBy: "lastUpdate",
+        sortDir: "desc",
+      }),
+    );
+    dispatch(
+      getInventorySummaryByBranch({
+        branchId: branch.id,
+        keyword: debouncedSearch,
+        category,
+      }),
+    );
+  }, [branch?.id, dispatch, debouncedSearch, category, page, pageSize]);
 
-    const pObj =
-      inv?.product ||
-      safeProducts.find((p) => p.id === (inv?.productId ?? inv?.product?.id));
+  useEffect(() => {
+    fetchInventoryPageAndSummary();
+  }, [fetchInventoryPageAndSummary]);
 
-    const catName =
-      pObj?.category?.name ||
-      (typeof pObj?.category === "string" ? pObj.category : null) ||
-      inv?.category?.name ||
-      (typeof inv?.category === "string" ? inv.category : null) ||
-      safeCategories.find((c) => c.id === pObj?.categoryId)?.name ||
-      "Chưa phân loại";
+  const getProductInfo = useCallback(
+    (inv) => {
+      const safeProducts = Array.isArray(products) ? products : [];
+      const safeCategories = Array.isArray(categories) ? categories : [];
 
-    return {
-      id: inv?.id,
-      productId: inv?.productId ?? pObj?.id,
-      name: pObj?.name || inv?.productName || `Product #${inv?.productId}`,
-      sku: pObj?.sku || inv?.sku || `SKU-${inv?.productId}`,
-      category: catName,
-      quantity: Number(inv?.quantity ?? 0),
-      minStockLevel: Number(inv?.minStockLevel ?? 10),
-      raw: inv,
-    };
-  };
+      const pObj =
+        inv?.product ||
+        safeProducts.find((p) => p.id === (inv?.productId ?? inv?.product?.id));
+
+      const catName =
+        pObj?.category?.name ||
+        (typeof pObj?.category === "string" ? pObj.category : null) ||
+        inv?.category?.name ||
+        (typeof inv?.category === "string" ? inv.category : null) ||
+        safeCategories.find((c) => c.id === pObj?.categoryId)?.name ||
+        "Chưa phân loại";
+
+      return {
+        id: inv?.id,
+        productId: inv?.productId ?? pObj?.id,
+        name: pObj?.name || inv?.productName || `Product #${inv?.productId}`,
+        sku: pObj?.sku || inv?.sku || `SKU-${inv?.productId}`,
+        category: catName,
+        quantity: Number(inv?.quantity ?? 0),
+        minStockLevel: Number(inv?.minStockLevel ?? 10),
+        raw: inv,
+      };
+    },
+    [products, categories],
+  );
 
   const inventoryRows = (Array.isArray(inventories) ? inventories : []).map(
     getProductInfo,
   );
 
-  const filteredRows = inventoryRows.filter((row) => {
-    const matchesSearch =
-      !searchTerm.trim() ||
-      (row.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (row.sku || "").toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory =
-      !category ||
-      category === "all" ||
-      (row.category || "").toLowerCase() === category.toLowerCase();
-    return matchesSearch && matchesCategory;
-  });
+  const handleCategoryChange = (nextCategory) => {
+    setCategory(nextCategory);
+    setPage(0);
+  };
+
+  const handlePageSizeChange = (nextSize) => {
+    setPageSize(nextSize);
+    setPage(0);
+  };
 
   const handleAddInventory = async () => {
     if (!branch?.id || !selectedProductId || quantity <= 0) return;
@@ -110,7 +157,7 @@ const Inventory = () => {
       setIsAddDialogOpen(false);
       setSelectedProductId("");
       setQuantity(1);
-      dispatch(getInventoryByBranch(branch.id));
+      fetchInventoryPageAndSummary();
     } catch (err) {
       toast({
         title: "Failed to Add Inventory",
@@ -148,7 +195,7 @@ const Inventory = () => {
       setEditInventory(null);
       setEditQuantity(1);
       setEditProductId("");
-      dispatch(getInventoryByBranch(branch.id));
+      fetchInventoryPageAndSummary();
     } catch (err) {
       toast({
         title: "Update Failed",
@@ -198,7 +245,7 @@ const Inventory = () => {
         }
       }
 
-      dispatch(getInventoryByBranch(branch.id));
+      fetchInventoryPageAndSummary();
       toast({
         title: "CSV Import Completed",
         description: `Successfully imported ${importedCount} inventory records.`,
@@ -215,23 +262,54 @@ const Inventory = () => {
     }
   };
 
-  const handleExportCSV = () => {
-    const header = "ID,ProductId,SKU,ProductName,Category,Quantity\n";
-    const rows = filteredRows
-      .map(
-        (r) =>
-          `${r.id},${r.productId},"${r.sku}","${(r.name || "").replace(/"/g, '""')}","${r.category}",${r.quantity}`,
-      )
-      .join("\n");
-    const blob = new Blob(["\uFEFF" + header + rows], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `branch_${branch?.id || "inventory"}_stock.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleExportCSV = async () => {
+    if (!branch?.id || exporting) return;
+    setExporting(true);
+    try {
+      const fullInventories = await dispatch(
+        getInventoryByBranch(branch.id),
+      ).unwrap();
+      const allRows = (Array.isArray(fullInventories) ? fullInventories : []).map(
+        getProductInfo,
+      );
+      const cleanTerm = searchTerm.trim().toLowerCase();
+      const exportRows = allRows.filter((row) => {
+        const matchesSearch =
+          !cleanTerm ||
+          (row.name || "").toLowerCase().includes(cleanTerm) ||
+          (row.sku || "").toLowerCase().includes(cleanTerm);
+        const matchesCategory =
+          !category ||
+          category === "all" ||
+          (row.category || "").toLowerCase() === category.toLowerCase();
+        return matchesSearch && matchesCategory;
+      });
+
+      const header = "ID,ProductId,SKU,ProductName,Category,Quantity\n";
+      const rows = exportRows
+        .map(
+          (r) =>
+            `${r.id},${r.productId},"${r.sku}","${(r.name || "").replace(/"/g, '""')}","${r.category}",${r.quantity}`,
+        )
+        .join("\n");
+      const blob = new Blob(["\uFEFF" + header + rows], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `branch_${branch?.id || "inventory"}_stock.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({
+        title: "Export Failed",
+        description: err || "Failed to export inventory CSV.",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -265,8 +343,10 @@ const Inventory = () => {
             variant="outline"
             className="gap-2 flex-1 sm:flex-initial"
             onClick={handleExportCSV}
+            disabled={exporting}
           >
-            <Download className="h-4 w-4" /> Export CSV
+            <Download className="h-4 w-4" />{" "}
+            {exporting ? "Exporting..." : "Export CSV"}
           </Button>
         </div>
       </div>
@@ -277,19 +357,34 @@ const Inventory = () => {
         setSearchTerm={setSearchTerm}
         category={category}
         selectedCategory={category}
-        onCategoryChange={setCategory}
-        setCategory={setCategory}
+        onCategoryChange={handleCategoryChange}
+        setCategory={handleCategoryChange}
         categories={categories}
         categoryList={categories}
         products={products}
-        inventoryRows={filteredRows}
-        inventories={filteredRows}
+        inventoryRows={inventoryRows}
+        inventories={inventoryRows}
+        totalQuantity={inventorySummary?.totalQuantity ?? 0}
       />
 
       <InventoryTable
-        rows={filteredRows}
-        inventories={filteredRows}
+        rows={inventoryRows}
+        inventories={inventoryRows}
+        loading={loading}
         onEdit={handleOpenEditDialog}
+        footer={
+          <DataTablePagination
+            page={pagedInventories?.pageNumber ?? page}
+            pageSize={pagedInventories?.pageSize ?? pageSize}
+            totalElements={pagedInventories?.totalElements ?? 0}
+            totalPages={pagedInventories?.totalPages ?? 0}
+            currentCount={inventoryRows.length}
+            onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+            loading={loading}
+            itemLabel="items"
+          />
+        }
       />
 
       <InventoryFormDialog

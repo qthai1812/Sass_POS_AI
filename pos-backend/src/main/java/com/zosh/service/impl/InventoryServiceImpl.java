@@ -8,26 +8,36 @@ import com.zosh.modal.Inventory;
 import com.zosh.modal.Product;
 import com.zosh.modal.User;
 import com.zosh.payload.dto.InventoryDTO;
+import com.zosh.payload.dto.InventorySummaryDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.BranchRepository;
 import com.zosh.repository.InventoryRepository;
 import com.zosh.repository.ProductRepository;
 import com.zosh.service.AccessControlService;
 import com.zosh.service.InventoryService;
 import com.zosh.service.PlanLimitChecker;
+import com.zosh.util.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class InventoryServiceImpl implements InventoryService {
+
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "quantity", "minStockLevel", "lastUpdate", "product.name", "product.sku"
+    );
 
     private final InventoryRepository inventoryRepository;
     private final BranchRepository branchRepository;
@@ -189,20 +199,83 @@ public class InventoryServiceImpl implements InventoryService {
                 .collect(Collectors.toList());
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<InventoryDTO> getAllInventoryByBranchId(Long branchId) {
+    private void assertCanReadBranch(Long branchId) {
         Branch branch = branchRepository.findById(branchId)
                 .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Branch not found with id: " + branchId));
         try {
             accessControl.assertCanAccessBranch(accessControl.currentUser(), branch);
+        } catch (AccessDeniedException ade) {
+            throw ade;
         } catch (Exception e) {
-            throw new org.springframework.security.access.AccessDeniedException(e.getMessage());
+            throw new AccessDeniedException(e.getMessage());
         }
+    }
+
+    private String normalizeFilter(String value, boolean treatAllAsEmpty) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        if (treatAllAsEmpty && "all".equalsIgnoreCase(trimmed)) {
+            return "";
+        }
+        return trimmed;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<InventoryDTO> getAllInventoryByBranchId(Long branchId) {
+        assertCanReadBranch(branchId);
         List<Inventory> inventories = inventoryRepository.findByBranchId(branchId);
         return inventories.stream()
                 .map(InventoryMapper::toDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<InventoryDTO> getInventoryByBranchPaged(
+            Long branchId,
+            String keyword,
+            String category,
+            int page,
+            int size,
+            String sortBy,
+            String sortDir
+    ) {
+        assertCanReadBranch(branchId);
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_SORT_FIELDS, "lastUpdate"
+        );
+        String cleanKeyword = normalizeFilter(keyword, false);
+        String cleanCategory = normalizeFilter(category, true);
+        Page<Inventory> inventoryPage = inventoryRepository.findByBranchPaged(
+                branchId, cleanKeyword, cleanCategory, pageable
+        );
+        return PageResponse.from(inventoryPage, InventoryMapper::toDTO);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public InventorySummaryDTO getInventorySummaryByBranch(Long branchId, String keyword, String category) {
+        assertCanReadBranch(branchId);
+        String cleanKeyword = normalizeFilter(keyword, false);
+        String cleanCategory = normalizeFilter(category, true);
+        List<Object[]> rows = inventoryRepository.summarizeBranchInventory(branchId, cleanKeyword, cleanCategory);
+        if (rows == null || rows.isEmpty() || rows.get(0) == null) {
+            return InventorySummaryDTO.builder().build();
+        }
+        Object[] row = rows.get(0);
+        return InventorySummaryDTO.builder()
+                .totalItems(toLong(row[0]))
+                .totalQuantity(toLong(row[1]))
+                .lowStockCount(toLong(row[2]))
+                .outOfStockCount(toLong(row[3]))
+                .build();
+    }
+
+    private long toLong(Object val) {
+        return val instanceof Number n ? n.longValue() : 0L;
     }
 
     @Override

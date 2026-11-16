@@ -1,7 +1,10 @@
 package com.zosh.controller;
 
 import com.zosh.modal.Customer;
+import com.zosh.payload.dto.CustomerDTO;
+import com.zosh.payload.dto.CustomerSummaryDTO;
 import com.zosh.payload.response.ApiResponse;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.service.CustomerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -43,6 +46,24 @@ public class CustomerController {
         ApiResponse apiResponse = new ApiResponse();
         apiResponse.setMessage("Customer deleted successfully");
         return ResponseEntity.ok(apiResponse);
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/paged")
+    public ResponseEntity<PageResponse<CustomerDTO>> getCustomersPaged(
+            @RequestParam(required = false, defaultValue = "") String keyword,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir
+    ) throws Exception {
+        return ResponseEntity.ok(customerService.getCustomersPaged(keyword, page, size, sortBy, sortDir));
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/summary")
+    public ResponseEntity<CustomerSummaryDTO> getCustomerSummary() throws Exception {
+        return ResponseEntity.ok(customerService.getCustomerSummary());
     }
 
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")

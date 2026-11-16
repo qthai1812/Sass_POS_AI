@@ -116,6 +116,55 @@ export const getAllStores = createAsyncThunk(
   },
 );
 
+// 🔹 Get all stores (Paged for Super Admin)
+export const getAllStoresPaged = createAsyncThunk(
+  "store/getAllPaged",
+  async (
+    {
+      status,
+      keyword = "",
+      page = 0,
+      size = 10,
+      sortBy = "createdAt",
+      sortDir = "desc",
+    } = {},
+    { rejectWithValue },
+  ) => {
+    try {
+      const headers = getAuthHeaders();
+      const params = { page, size, sortBy, sortDir };
+      if (status && status !== "ALL" && status !== "all") {
+        params.status = String(status).toUpperCase();
+      }
+      if (keyword && keyword.trim()) {
+        params.keyword = keyword.trim();
+      }
+      const res = await api.get("/api/stores/paged", { headers, params });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch paged stores",
+      );
+    }
+  },
+);
+
+// 🔹 Get platform store summary (Super Admin)
+export const getStoreSummary = createAsyncThunk(
+  "store/getSummary",
+  async (_, { rejectWithValue }) => {
+    try {
+      const headers = getAuthHeaders();
+      const res = await api.get("/api/stores/summary", { headers });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch store summary",
+      );
+    }
+  },
+);
+
 // 🔹 Update store
 export const updateStore = createAsyncThunk(
   "store/update",

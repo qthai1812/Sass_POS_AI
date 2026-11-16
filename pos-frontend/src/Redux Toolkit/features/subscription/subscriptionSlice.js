@@ -7,13 +7,19 @@ import {
   updatePaymentStatus,
   getStoreSubscriptions,
   getAllSubscriptions,
+  getAllSubscriptionsPaged,
   getExpiringSubscriptions,
   countSubscriptionsByStatus,
   getMyEntitlements
 } from './subscriptionThunks';
+import { normalizePageResponse } from '@/utils/paginationUtils';
+
+const createEmptySubscriptionPage = () => normalizePageResponse(null);
 
 const initialState = {
   subscriptions: [],
+  pagedAdminSubscriptions: createEmptySubscriptionPage(),
+  pagedAdminLoading: false,
   selectedSubscription: null,
   expiringSubscriptions: [],
   countByStatus: null,
@@ -98,6 +104,10 @@ const subscriptionSlice = createSlice({
       .addCase(activateSubscription.fulfilled, (state, action) => {
         state.loading = false;
         state.subscriptions = upsertStoreSubscription(state.subscriptions, action.payload);
+        state.pagedAdminSubscriptions.content = upsertStoreSubscription(
+          state.pagedAdminSubscriptions.content,
+          action.payload
+        );
       })
       .addCase(activateSubscription.pending, (state) => {
         state.loading = true;
@@ -110,6 +120,9 @@ const subscriptionSlice = createSlice({
       .addCase(cancelSubscription.fulfilled, (state, action) => {
         state.loading = false;
         state.subscriptions = state.subscriptions.map(sub => sub.id === action.payload.id ? action.payload : sub);
+        state.pagedAdminSubscriptions.content = state.pagedAdminSubscriptions.content.map(
+          sub => sub.id === action.payload.id ? action.payload : sub
+        );
       })
       .addCase(cancelSubscription.pending, (state) => {
         state.loading = true;
@@ -122,6 +135,10 @@ const subscriptionSlice = createSlice({
       .addCase(updatePaymentStatus.fulfilled, (state, action) => {
         state.loading = false;
         state.subscriptions = upsertStoreSubscription(state.subscriptions, action.payload);
+        state.pagedAdminSubscriptions.content = upsertStoreSubscription(
+          state.pagedAdminSubscriptions.content,
+          action.payload
+        );
       })
       .addCase(updatePaymentStatus.pending, (state) => {
         state.loading = true;
@@ -152,6 +169,18 @@ const subscriptionSlice = createSlice({
       })
       .addCase(getAllSubscriptions.rejected, (state, action) => {
         state.loading = false;
+        state.error = action.payload;
+      })
+
+      .addCase(getAllSubscriptionsPaged.pending, (state) => {
+        state.pagedAdminLoading = true;
+      })
+      .addCase(getAllSubscriptionsPaged.fulfilled, (state, action) => {
+        state.pagedAdminLoading = false;
+        state.pagedAdminSubscriptions = normalizePageResponse(action.payload);
+      })
+      .addCase(getAllSubscriptionsPaged.rejected, (state, action) => {
+        state.pagedAdminLoading = false;
         state.error = action.payload;
       })
 

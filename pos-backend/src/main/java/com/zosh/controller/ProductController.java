@@ -3,6 +3,7 @@ package com.zosh.controller;
 import com.zosh.modal.User;
 import com.zosh.payload.dto.ProductDTO;
 import com.zosh.payload.response.ApiResponse;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.service.ProductService;
 import com.zosh.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,22 @@ public class ProductController {
             @RequestHeader(value = "Authorization", required = false) String jwt
     ) throws Exception {
         return ResponseEntity.ok(productService.getProductsByStoreId(storeId));
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/store/{storeId}/paged")
+    public ResponseEntity<PageResponse<ProductDTO>> getByStoreIdPaged(
+            @PathVariable Long storeId,
+            @RequestParam(required = false, defaultValue = "") String keyword,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir
+    ) {
+        return ResponseEntity.ok(productService.getProductsByStorePaged(
+                storeId, keyword, categoryId, page, size, sortBy, sortDir
+        ));
     }
 
     @PreAuthorize("hasRole('STORE_OWNER')")

@@ -41,6 +41,8 @@ import { storeAdminRole } from "../../../utils/userRole";
 import { toast } from "sonner";
 import usePlanEntitlements from "@/hooks/usePlanEntitlements";
 import api from "@/utils/api";
+import DataTablePagination from "@/components/ui/data-table-pagination";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 
 export default function StoreEmployees() {
   const dispatch = useDispatch();
@@ -86,24 +88,59 @@ export default function StoreEmployees() {
   const [resettingPassword, setResettingPassword] = useState(false);
   const [copiedPassword, setCopiedPassword] = useState(false);
 
-  const [transferRequests, setTransferRequests] = useState([]);
+  const [transferPageData, setTransferPageData] = useState(null);
+  const [transferSummary, setTransferSummary] = useState({
+    totalRequests: 0,
+    pendingRequests: 0,
+  });
+  const [transferPage, setTransferPage] = useState(0);
+  const [transferPageSize, setTransferPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [showAllRequests, setShowAllRequests] = useState(false);
   const [reviewingId, setReviewingId] = useState(null);
   const [reviewNotes, setReviewNotes] = useState({});
 
+  const displayedTransferRequests = transferPageData?.content || [];
+
+  const fetchTransferSummary = useCallback(async () => {
+    if (!store?.id) return;
+    try {
+      const res = await api.get(`/api/branch-transfer-requests/store/${store.id}/summary`);
+      setTransferSummary({
+        totalRequests: res.data?.totalRequests ?? 0,
+        pendingRequests: res.data?.pendingRequests ?? 0,
+      });
+    } catch (err) {
+      console.error("Failed to fetch branch transfer request summary:", err);
+    }
+  }, [store?.id]);
+
   const fetchTransferRequests = useCallback(async () => {
     if (!store?.id) return;
     setLoadingRequests(true);
     try {
-      const res = await api.get(`/api/branch-transfer-requests/store/${store.id}`);
-      setTransferRequests(Array.isArray(res.data) ? res.data : []);
+      const res = await api.get(`/api/branch-transfer-requests/store/${store.id}/paged`, {
+        params: {
+          page: transferPage,
+          size: transferPageSize,
+          sortBy: "createdAt",
+          sortDir: "desc",
+          ...(showAllRequests ? {} : { status: "PENDING" }),
+        },
+      });
+      setTransferPageData(res.data || null);
     } catch (err) {
       console.error("Failed to fetch branch transfer requests:", err);
     } finally {
       setLoadingRequests(false);
     }
-  }, [store?.id]);
+  }, [store?.id, transferPage, transferPageSize, showAllRequests]);
+
+  useEffect(() => {
+    if (store?.id) {
+      fetchTransferSummary();
+    }
+  }, [store?.id, fetchTransferSummary]);
 
   useEffect(() => {
     if (store?.id) {
@@ -113,6 +150,10 @@ export default function StoreEmployees() {
 
   const handleReviewTransfer = async (reqId, action) => {
     setReviewingId(reqId);
+    const shouldStepBack =
+      !showAllRequests &&
+      displayedTransferRequests.length === 1 &&
+      transferPage > 0;
     try {
       await api.put(`/api/branch-transfer-requests/${reqId}/review`, {
         action,
@@ -123,7 +164,12 @@ export default function StoreEmployees() {
           ? "Đã phê duyệt chuyển chi nhánh! Nhân viên đã được chuyển sang chi nhánh mới."
           : "Đã từ chối đơn yêu cầu chuyển chi nhánh.",
       );
-      await fetchTransferRequests();
+      await fetchTransferSummary();
+      if (shouldStepBack) {
+        setTransferPage((prev) => Math.max(0, prev - 1));
+      } else {
+        await fetchTransferRequests();
+      }
       if (store?.id) {
         dispatch(
           findStoreEmployees({
@@ -146,13 +192,6 @@ export default function StoreEmployees() {
       setReviewingId(null);
     }
   };
-
-  const pendingTransferRequests = transferRequests.filter(
-    (r) => r.status === "PENDING",
-  );
-  const displayedTransferRequests = showAllRequests
-    ? transferRequests
-    : pendingTransferRequests;
 
   const handleAddEmployee = async (newEmployeeData) => {
     if (store?.id && localStorage.getItem("jwt")) {
@@ -515,9 +554,9 @@ export default function StoreEmployees() {
               <CardTitle className="text-lg flex items-center gap-2">
                 <ArrowRightLeft className="h-5 w-5 text-emerald-600" />
                 Đơn yêu cầu chuyển chi nhánh của nhân viên
-                {pendingTransferRequests.length > 0 && (
+                {transferSummary.pendingRequests > 0 && (
                   <Badge className="bg-amber-500 text-white">
-                    {pendingTransferRequests.length} chờ duyệt
+                    {transferSummary.pendingRequests} chờ duyệt
                   </Badge>
                 )}
               </CardTitle>
@@ -529,11 +568,14 @@ export default function StoreEmployees() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowAllRequests((v) => !v)}
+                onClick={() => {
+                  setShowAllRequests((v) => !v);
+                  setTransferPage(0);
+                }}
               >
                 {showAllRequests
-                  ? `Chỉ xem đơn chờ duyệt (${pendingTransferRequests.length})`
-                  : `Xem toàn bộ lịch sử (${transferRequests.length})`}
+                  ? `Chỉ xem đơn chờ duyệt (${transferSummary.pendingRequests})`
+                  : `Xem toàn bộ lịch sử (${transferSummary.totalRequests})`}
               </Button>
             </div>
           </div>
@@ -678,6 +720,22 @@ export default function StoreEmployees() {
               })}
             </div>
           )}
+
+          <DataTablePagination
+            page={transferPageData?.pageNumber ?? transferPage}
+            pageSize={transferPageData?.pageSize ?? transferPageSize}
+            totalElements={transferPageData?.totalElements ?? 0}
+            totalPages={transferPageData?.totalPages ?? 0}
+            currentCount={displayedTransferRequests.length}
+            onPageChange={setTransferPage}
+            onPageSizeChange={(newSize) => {
+              setTransferPageSize(newSize);
+              setTransferPage(0);
+            }}
+            loading={loadingRequests}
+            itemLabel="đơn yêu cầu"
+            className="mt-4"
+          />
         </CardContent>
       </Card>
     </div>

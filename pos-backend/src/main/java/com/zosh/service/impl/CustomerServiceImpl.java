@@ -1,16 +1,23 @@
 package com.zosh.service.impl;
 
 import com.zosh.domain.UserRole;
+import com.zosh.mapper.CustomerMapper;
 import com.zosh.modal.Customer;
 import com.zosh.modal.Order;
 import com.zosh.modal.Store;
 import com.zosh.modal.User;
+import com.zosh.payload.dto.CustomerDTO;
+import com.zosh.payload.dto.CustomerSummaryDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.CustomerRepository;
 import com.zosh.repository.OrderRepository;
 import com.zosh.repository.StoreRepository;
 import com.zosh.service.CustomerService;
 import com.zosh.service.UserService;
+import com.zosh.util.PaginationUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,10 +25,16 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class CustomerServiceImpl implements CustomerService {
+
+    private static final int GOLD_TIER_MIN_POINTS = 100;
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "fullName", "email", "phone", "loyaltyPoints", "createdAt"
+    );
 
     private final CustomerRepository customerRepository;
     private final OrderRepository orderRepository;
@@ -169,14 +182,18 @@ public class CustomerServiceImpl implements CustomerService {
         return customer;
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<Customer> getAllCustomers() throws Exception {
+    private Store resolveScopedStoreForRead() throws Exception {
         User current = userService.getCurrentUser();
         if (current != null && current.getRole() == UserRole.ROLE_SUPER_ADMIN) {
             throw new AccessDeniedException("Super Admin does not manage store customers");
         }
-        Store currentStore = resolveCurrentStore();
+        return resolveCurrentStore();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Customer> getAllCustomers() throws Exception {
+        Store currentStore = resolveScopedStoreForRead();
         if (currentStore != null) {
             return customerRepository.findByStoreId(currentStore.getId());
         }
@@ -189,14 +206,50 @@ public class CustomerServiceImpl implements CustomerService {
         if (keyword == null || keyword.trim().isEmpty()) {
             return getAllCustomers();
         }
-        User current = userService.getCurrentUser();
-        if (current != null && current.getRole() == UserRole.ROLE_SUPER_ADMIN) {
-            throw new AccessDeniedException("Super Admin does not manage store customers");
-        }
-        Store currentStore = resolveCurrentStore();
+        Store currentStore = resolveScopedStoreForRead();
         if (currentStore != null) {
             return customerRepository.searchCustomersByStore(currentStore.getId(), keyword.trim());
         }
         return Collections.emptyList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<CustomerDTO> getCustomersPaged(String keyword, int page, int size, String sortBy, String sortDir) throws Exception {
+        Store currentStore = resolveScopedStoreForRead();
+        int safeSize = PaginationUtils.normalizeSize(size);
+        if (currentStore == null) {
+            return PageResponse.empty(page, safeSize);
+        }
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_SORT_FIELDS, "createdAt"
+        );
+        String cleanKeyword = keyword != null ? keyword.trim() : "";
+        Page<Customer> customerPage = cleanKeyword.isEmpty()
+                ? customerRepository.findByStoreId(currentStore.getId(), pageable)
+                : customerRepository.searchCustomersByStore(currentStore.getId(), cleanKeyword, pageable);
+        return PageResponse.from(customerPage, CustomerMapper::toDTO);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CustomerSummaryDTO getCustomerSummary() throws Exception {
+        Store currentStore = resolveScopedStoreForRead();
+        if (currentStore == null) {
+            return CustomerSummaryDTO.builder()
+                    .totalCustomers(0L)
+                    .goldAndDiamondCount(0L)
+                    .totalLoyaltyPoints(0L)
+                    .build();
+        }
+        Long storeId = currentStore.getId();
+        long totalCustomers = customerRepository.countByStoreId(storeId);
+        long goldCount = customerRepository.countByStoreIdAndLoyaltyPointsGreaterThanEqual(storeId, GOLD_TIER_MIN_POINTS);
+        Long totalPoints = customerRepository.sumLoyaltyPointsByStoreId(storeId);
+        return CustomerSummaryDTO.builder()
+                .totalCustomers(totalCustomers)
+                .goldAndDiamondCount(goldCount)
+                .totalLoyaltyPoints(totalPoints != null ? totalPoints : 0L)
+                .build();
     }
 }

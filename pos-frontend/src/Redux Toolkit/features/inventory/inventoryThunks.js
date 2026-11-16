@@ -131,6 +131,61 @@ export const getInventoryByBranch = createAsyncThunk(
   },
 );
 
+// 🔹 Get inventory by branch ID (Paged, server-side search & category filter)
+export const getInventoryByBranchPaged = createAsyncThunk(
+  "inventory/getByBranchPaged",
+  async (
+    {
+      branchId,
+      keyword = "",
+      category = "all",
+      page = 0,
+      size = 10,
+      sortBy = "lastUpdate",
+      sortDir = "desc",
+    },
+    { rejectWithValue },
+  ) => {
+    const token = localStorage.getItem("jwt");
+    const params = { page, size, sortBy, sortDir };
+    if (keyword && keyword.trim()) params.keyword = keyword.trim();
+    if (category && category !== "all") params.category = category;
+    try {
+      const res = await api.get(`/api/inventories/branch/${branchId}/paged`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params,
+      });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch paged branch inventory",
+      );
+    }
+  },
+);
+
+// 🔹 Get inventory summary by branch ID (totals matching current filter)
+export const getInventorySummaryByBranch = createAsyncThunk(
+  "inventory/getSummaryByBranch",
+  async ({ branchId, keyword = "", category = "all" }, { rejectWithValue }) => {
+    const token = localStorage.getItem("jwt");
+    const params = {};
+    if (keyword && keyword.trim()) params.keyword = keyword.trim();
+    if (category && category !== "all") params.category = category;
+    try {
+      const res = await api.get(`/api/inventories/branch/${branchId}/summary`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params,
+      });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch inventory summary",
+      );
+    }
+  },
+);
+
 // 🔹 Get inventory by product ID (supports either productId directly or { branchId, productId })
 export const getInventoryByProduct = createAsyncThunk(
   "inventory/getByProduct",

@@ -8,6 +8,8 @@ import com.zosh.modal.Product;
 import com.zosh.modal.Store;
 import com.zosh.modal.User;
 import com.zosh.payload.dto.InventoryDTO;
+import com.zosh.payload.dto.InventorySummaryDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.BranchRepository;
 import com.zosh.repository.InventoryRepository;
 import com.zosh.repository.ProductRepository;
@@ -20,6 +22,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.util.Collections;
@@ -149,5 +155,48 @@ class InventoryServiceImplTest {
         verify(planLimitChecker).requireFeature(store, PlanFeature.MULTI_LOCATION);
         verify(inventoryRepository).save(srcInv);
         verify(inventoryRepository).save(dstInv);
+    }
+
+    @Test
+    void getInventoryByBranchPaged_normalizesAllCategoryAndReturnsPage() throws Exception {
+        User manager = new User();
+        manager.setId(2L);
+        manager.setRole(UserRole.ROLE_BRANCH_MANAGER);
+
+        Inventory inv = Inventory.builder().id(101L).branch(branch).product(product).quantity(15).minStockLevel(5).build();
+        Page<Inventory> repoPage = new PageImpl<>(List.of(inv), PageRequest.of(0, 10), 1);
+
+        when(branchRepository.findById(10L)).thenReturn(Optional.of(branch));
+        when(accessControl.currentUser()).thenReturn(manager);
+        when(inventoryRepository.findByBranchPaged(eq(10L), eq("SKU"), eq(""), any(Pageable.class)))
+                .thenReturn(repoPage);
+
+        PageResponse<InventoryDTO> res = inventoryService.getInventoryByBranchPaged(
+                10L, " SKU ", "all", 0, 10, "quantity", "asc"
+        );
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(inventoryRepository).findByBranchPaged(eq(10L), eq("SKU"), eq(""), pageableCaptor.capture());
+        assertEquals(10, pageableCaptor.getValue().getPageSize());
+        assertEquals(1, res.getContent().size());
+        assertEquals(15, res.getContent().get(0).getQuantity());
+    }
+
+    @Test
+    void getInventorySummaryByBranch_returnsAggregateCounts() throws Exception {
+        User manager = new User();
+        manager.setId(2L);
+        when(branchRepository.findById(10L)).thenReturn(Optional.of(branch));
+        when(accessControl.currentUser()).thenReturn(manager);
+
+        List<Object[]> summaryRows = Collections.singletonList(new Object[]{12L, 340L, 3L, 1L});
+        when(inventoryRepository.summarizeBranchInventory(10L, "", "Shirts")).thenReturn(summaryRows);
+
+        InventorySummaryDTO summary = inventoryService.getInventorySummaryByBranch(10L, "", " Shirts ");
+
+        assertEquals(12L, summary.getTotalItems());
+        assertEquals(340L, summary.getTotalQuantity());
+        assertEquals(3L, summary.getLowStockCount());
+        assertEquals(1L, summary.getOutOfStockCount());
     }
 }

@@ -5,7 +5,6 @@ import {
   Loader2,
   ShoppingBagIcon,
   CalendarIcon,
-  DollarSignIcon,
 } from "lucide-react";
 import { formatDate, getStatusColor } from "../../order/data";
 import { getHistoricalUnitPrice } from "../../return/returnUtils";
@@ -55,8 +54,7 @@ const PurchaseHistory = ({ orders, loading = false }) => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="flex items-center justify-end gap-1.5 mb-1">
-                      <DollarSignIcon className="h-4 w-4" />
+                    <div className="mb-1">
                       <span className="font-bold">
                         ₫{Number(order.totalAmount || 0).toLocaleString("vi-VN")}
                       </span>

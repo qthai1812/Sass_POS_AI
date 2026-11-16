@@ -10,6 +10,7 @@ import com.zosh.modal.SubscriptionPlan;
 import com.zosh.modal.User;
 import com.zosh.payload.dto.PlanEntitlementsDTO;
 import com.zosh.payload.dto.SubscriptionDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.StoreRepository;
 import com.zosh.repository.SubscriptionPlanRepository;
 import com.zosh.repository.SubscriptionRepository;
@@ -17,14 +18,18 @@ import com.zosh.service.PaymentGatewayService;
 import com.zosh.service.PlanLimitChecker;
 import com.zosh.service.SubscriptionService;
 import com.zosh.service.UserService;
+import com.zosh.util.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -35,6 +40,9 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private static final List<SubscriptionStatus> ACTIVE_OR_TRIAL = List.of(
             SubscriptionStatus.ACTIVE,
             SubscriptionStatus.TRIAL
+    );
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "amount", "startDate", "endDate", "status", "createdAt"
     );
 
     private final SubscriptionRepository subscriptionRepository;
@@ -288,6 +296,30 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 ? subscriptionRepository.findByStatus(status)
                 : subscriptionRepository.findAll();
         return subs.stream().map(this::toDTO).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<SubscriptionDTO> getAllSubscriptionsPaged(
+            SubscriptionStatus status,
+            Integer expiringDays,
+            int page,
+            int size,
+            String sortBy,
+            String sortDir
+    ) throws Exception {
+        assertSuperAdmin();
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_SORT_FIELDS, "createdAt"
+        );
+        Page<Subscription> subPage;
+        if (expiringDays != null && expiringDays > 0) {
+            LocalDateTime cutoff = LocalDateTime.now().plusDays(expiringDays);
+            subPage = subscriptionRepository.findAdminExpiringPaged(cutoff, ACTIVE_OR_TRIAL, pageable);
+        } else {
+            subPage = subscriptionRepository.findAdminByStatusPaged(status, pageable);
+        }
+        return PageResponse.from(subPage, this::toDTO);
     }
 
     @Override

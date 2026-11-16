@@ -4,6 +4,7 @@ import com.zosh.domain.PaymentGateway;
 import com.zosh.domain.SubscriptionStatus;
 import com.zosh.payload.dto.PlanEntitlementsDTO;
 import com.zosh.payload.dto.SubscriptionDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.service.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -86,6 +87,21 @@ public class SubscriptionController {
     public ResponseEntity<List<SubscriptionDTO>> getAllSubscriptions(
             @RequestParam(required = false) SubscriptionStatus status) throws Exception {
         return ResponseEntity.ok(subscriptionService.getAllSubscriptions(status));
+    }
+
+    // GET /api/subscriptions/admin/paged?status=&expiringDays=&page=0&size=10
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @GetMapping("/admin/paged")
+    public ResponseEntity<PageResponse<SubscriptionDTO>> getAllSubscriptionsPaged(
+            @RequestParam(required = false) SubscriptionStatus status,
+            @RequestParam(required = false) Integer expiringDays,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir) throws Exception {
+        return ResponseEntity.ok(subscriptionService.getAllSubscriptionsPaged(
+                status, expiringDays, page, size, sortBy, sortDir
+        ));
     }
 
     // GET /api/subscriptions/admin/expiring?days=7

@@ -3,12 +3,17 @@ package com.zosh.controller;
 import com.zosh.configuration.SecurityConfig;
 import com.zosh.domain.OrderStatus;
 import com.zosh.domain.StoreStatus;
+import com.zosh.payload.dto.BranchTransferSummaryDTO;
+import com.zosh.payload.dto.CustomerSummaryDTO;
+import com.zosh.payload.dto.InventorySummaryDTO;
 import com.zosh.payload.dto.OrderDTO;
 import com.zosh.payload.dto.RefundDTO;
 import com.zosh.payload.dto.ShiftReportDTO;
+import com.zosh.payload.dto.StoreSummaryDTO;
 import com.zosh.payload.response.AiCopilotDTOs.AiInsightResponse;
 import com.zosh.payload.response.AiCopilotDTOs.QuickCommandResponse;
 import com.zosh.payload.response.BranchOverviewDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.payload.response.StoreOverviewDTO;
 import com.zosh.repository.UserRepository;
 import com.zosh.service.*;
@@ -33,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         CustomerController.class,
         CouponController.class,
         OrderController.class,
+        ProductController.class,
         RefundController.class,
         ShiftReportController.class,
         InventoryController.class,
@@ -42,7 +48,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         FileController.class,
         StoreAnalyticsController.class,
         BranchAnalyticsController.class,
-        StoreController.class
+        StoreController.class,
+        SubscriptionController.class
 })
 @Import(SecurityConfig.class)
 class ControllerRbacSecurityTest {
@@ -54,6 +61,7 @@ class ControllerRbacSecurityTest {
     @MockitoBean private CustomerService customerService;
     @MockitoBean private CouponService couponService;
     @MockitoBean private OrderService orderService;
+    @MockitoBean private ProductService productService;
     @MockitoBean private RefundService refundService;
     @MockitoBean private ShiftReportService shiftReportService;
     @MockitoBean private InventoryService inventoryService;
@@ -64,6 +72,7 @@ class ControllerRbacSecurityTest {
     @MockitoBean private StoreAnalyticsService storeAnalyticsService;
     @MockitoBean private BranchAnalyticsService branchAnalyticsService;
     @MockitoBean private StoreService storeService;
+    @MockitoBean private SubscriptionService subscriptionService;
     @MockitoBean private UserService userService;
 
     // -------------------------------------------------------------------------
@@ -291,5 +300,138 @@ class ControllerRbacSecurityTest {
                         .content("{}")
                         .with(user("sa").roles("SUPER_ADMIN")))
                 .andExpect(status().isForbidden());
+    }
+
+    // -------------------------------------------------------------------------
+    // Paginated Customer & Order Endpoints RBAC
+    // -------------------------------------------------------------------------
+    @Test
+    void paginatedCustomerAndOrderEndpoints_enforceRoleBoundaries() throws Exception {
+        when(customerService.getCustomersPaged(any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+        when(customerService.getCustomerSummary()).thenReturn(new CustomerSummaryDTO(0, 0, 0));
+        when(orderService.getOrdersByBranchPaged(any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+        when(orderService.getOrdersByCashierPaged(any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+
+        // Unauthenticated
+        mockMvc.perform(get("/api/customers/paged")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/orders/branch/1/paged")).andExpect(status().isUnauthorized());
+
+        // SUPER_ADMIN blocked from tenant operational tables
+        mockMvc.perform(get("/api/customers/paged").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/customers/summary").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/orders/branch/1/paged").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/orders/cashier/1/paged").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isForbidden());
+
+        // Store Owner, Branch Manager, Cashier allowed
+        for (String role : new String[]{"STORE_OWNER", "BRANCH_MANAGER", "CASHIER"}) {
+            mockMvc.perform(get("/api/customers/paged").with(user("u").roles(role)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get("/api/customers/summary").with(user("u").roles(role)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get("/api/orders/branch/1/paged").with(user("u").roles(role)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get("/api/orders/cashier/1/paged").with(user("u").roles(role)))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void phase2PaginatedEndpoints_enforceRoleBoundaries() throws Exception {
+        when(productService.getProductsByStorePaged(any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+        when(inventoryService.getInventoryByBranchPaged(any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+        when(inventoryService.getInventorySummaryByBranch(any(), any(), any()))
+                .thenReturn(new InventorySummaryDTO(0, 0, 0, 0));
+        when(refundService.getRefundsByBranchPaged(any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+        when(shiftReportService.getAllShiftReportsPaged(any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+        when(shiftReportService.getShiftReportsByBranchIdPaged(any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+        when(shiftReportService.getShiftReportsByCashierIdPaged(any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+
+        // SUPER_ADMIN blocked
+        mockMvc.perform(get("/api/products/store/1/paged").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/inventories/branch/1/paged").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/refunds/branch/1/paged").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/shift-reports/paged").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isForbidden());
+
+        // /api/shift-reports/paged strictly STORE_OWNER
+        mockMvc.perform(get("/api/shift-reports/paged").with(user("m").roles("BRANCH_MANAGER")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/shift-reports/paged").with(user("c").roles("CASHIER")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/shift-reports/paged").with(user("o").roles("STORE_OWNER")))
+                .andExpect(status().isOk());
+
+        for (String role : new String[]{"STORE_OWNER", "BRANCH_MANAGER", "CASHIER"}) {
+            mockMvc.perform(get("/api/products/store/1/paged").with(user("u").roles(role)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get("/api/inventories/branch/1/paged").with(user("u").roles(role)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get("/api/inventories/branch/1/summary").with(user("u").roles(role)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get("/api/refunds/branch/1/paged").with(user("u").roles(role)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get("/api/shift-reports/branch/1/paged").with(user("u").roles(role)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get("/api/shift-reports/cashier/1/paged").with(user("u").roles(role)))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void phase3PaginatedEndpoints_enforceRoleBoundaries() throws Exception {
+        when(storeService.getAllStoresPaged(any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+        when(storeService.getStoreSummary())
+                .thenReturn(new StoreSummaryDTO());
+        when(subscriptionService.getAllSubscriptionsPaged(any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+        when(transferRequestService.getStoreRequestsPaged(any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(PageResponse.empty(0, 10));
+        when(transferRequestService.getStoreRequestSummary(any()))
+                .thenReturn(new BranchTransferSummaryDTO(0, 0));
+
+        // Super Admin only: /api/stores/paged, /api/stores/summary, /api/subscriptions/admin/paged
+        for (String role : new String[]{"STORE_OWNER", "BRANCH_MANAGER", "CASHIER"}) {
+            mockMvc.perform(get("/api/stores/paged").with(user("u").roles(role)))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/stores/summary").with(user("u").roles(role)))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/subscriptions/admin/paged").with(user("u").roles(role)))
+                    .andExpect(status().isForbidden());
+        }
+        mockMvc.perform(get("/api/stores/paged").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/stores/summary").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/subscriptions/admin/paged").with(user("sa").roles("SUPER_ADMIN")))
+                .andExpect(status().isOk());
+
+        // Store Owner only: /api/branch-transfer-requests/store/1/paged & /summary
+        for (String role : new String[]{"SUPER_ADMIN", "BRANCH_MANAGER", "CASHIER"}) {
+            mockMvc.perform(get("/api/branch-transfer-requests/store/1/paged").with(user("u").roles(role)))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/branch-transfer-requests/store/1/summary").with(user("u").roles(role)))
+                    .andExpect(status().isForbidden());
+        }
+        mockMvc.perform(get("/api/branch-transfer-requests/store/1/paged").with(user("o").roles("STORE_OWNER")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/branch-transfer-requests/store/1/summary").with(user("o").roles("STORE_OWNER")))
+                .andExpect(status().isOk());
     }
 }

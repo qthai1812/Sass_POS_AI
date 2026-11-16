@@ -52,6 +52,26 @@ public class StoreRevenueEnricher {
                 .collect(Collectors.toList());
     }
 
+    public double computeTotalPlatformEarnings(List<Object[]> storeIdAndRateRows) {
+        if (storeIdAndRateRows == null || storeIdAndRateRows.isEmpty()) {
+            return 0.0;
+        }
+        Map<Long, Double> netRevenueByStore = computeNetRevenueByStore();
+        double totalEarnings = 0.0;
+        for (Object[] row : storeIdAndRateRows) {
+            if (row == null || row.length == 0 || !(row[0] instanceof Number)) {
+                continue;
+            }
+            Long storeId = ((Number) row[0]).longValue();
+            double rate = (row.length > 1 && row[1] instanceof Number)
+                    ? ((Number) row[1]).doubleValue()
+                    : DEFAULT_COMMISSION_RATE;
+            double safeRevenue = Math.max(0.0, netRevenueByStore.getOrDefault(storeId, 0.0));
+            totalEarnings += Math.round(safeRevenue * (rate / 100.0) * 100.0) / 100.0;
+        }
+        return Math.round(totalEarnings * 100.0) / 100.0;
+    }
+
     private Map<Long, Double> computeNetRevenueByStore() {
         Map<Long, Double> revenueByStore = new HashMap<>();
         for (Object[] row : orderRepository.sumCompletedSalesGroupedByStore()) {

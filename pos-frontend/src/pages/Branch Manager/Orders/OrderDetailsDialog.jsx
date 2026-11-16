@@ -20,12 +20,12 @@ const OrderDetailsDialog = ({
 }) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Order Details</DialogTitle>
         </DialogHeader>
         {selectedOrder && (
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             {/* Order Summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>

@@ -7,7 +7,7 @@ import {
   TableBody,
   TableCell,
 } from "@/components/ui/table";
-import { Tag, DollarSign } from "lucide-react";
+import { Tag } from "lucide-react";
 import { useSelector } from "react-redux";
 
 const LowStockProductTable = () => {
@@ -102,12 +102,12 @@ const LowStockProductTable = () => {
                 </div>
               </TableCell>
               <TableCell>
-                <div className="flex items-center gap-1">
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />đ
+                <span className="font-medium whitespace-nowrap">
+                  ₫
                   {Number(
                     product.sellingPrice ?? product.price ?? 0,
-                  ).toLocaleString()}
-                </div>
+                  ).toLocaleString("vi-VN")}
+                </span>
               </TableCell>
             </TableRow>
           ))

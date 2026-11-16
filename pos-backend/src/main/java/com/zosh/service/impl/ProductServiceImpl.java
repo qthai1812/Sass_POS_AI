@@ -4,23 +4,32 @@ import com.zosh.domain.UserRole;
 import com.zosh.mapper.ProductMapper;
 import com.zosh.modal.*;
 import com.zosh.payload.dto.ProductDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.*;
 import com.zosh.service.AccessControlService;
 import com.zosh.service.PlanLimitChecker;
 import com.zosh.service.ProductService;
+import com.zosh.util.PaginationUtils;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
+
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "name", "sku", "sellingPrice", "mrp", "brand", "createdAt"
+    );
 
     private final ProductRepository productRepository;
     private final StoreRepository storeRepository;
@@ -201,6 +210,28 @@ public class ProductServiceImpl implements ProductService {
         return products.stream()
                 .map(ProductMapper::toDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<ProductDTO> getProductsByStorePaged(
+            Long storeId,
+            String keyword,
+            Long categoryId,
+            int page,
+            int size,
+            String sortBy,
+            String sortDir
+    ) {
+        assertCanReadStore(storeId);
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_SORT_FIELDS, "createdAt"
+        );
+        String cleanKeyword = keyword != null ? keyword.trim() : "";
+        Page<Product> productPage = productRepository.findByStorePaged(
+                storeId, categoryId, cleanKeyword, pageable
+        );
+        return PageResponse.from(productPage, ProductMapper::toDTO);
     }
 
     @Override

@@ -1,6 +1,9 @@
 package com.zosh.repository;
 
 import com.zosh.modal.Product;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -25,6 +28,24 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     )
     List<Product> searchByKeyword(@Param("storeId") Long storeId,
                                   @Param("query") String keyword);
+
+    @EntityGraph(attributePaths = {"category", "store"})
+    @Query("""
+            SELECT p FROM Product p
+            LEFT JOIN p.category c
+            WHERE p.store.id = :storeId
+              AND (:categoryId IS NULL OR c.id = :categoryId)
+              AND (
+                  :keyword IS NULL OR :keyword = ''
+                  OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                  OR LOWER(COALESCE(p.brand, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                  OR LOWER(COALESCE(p.sku, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+              )
+            """)
+    Page<Product> findByStorePaged(@Param("storeId") Long storeId,
+                                 @Param("categoryId") Long categoryId,
+                                 @Param("keyword") String keyword,
+                                 Pageable pageable);
 
     @Query("SELECT COUNT(p) > 0 FROM Product p WHERE p.store.id = :storeId AND LOWER(p.sku) = LOWER(:sku)")
     boolean existsByStoreIdAndSkuIgnoreCase(@Param("storeId") Long storeId, @Param("sku") String sku);
