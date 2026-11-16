@@ -14,7 +14,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -99,7 +98,6 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         plan.setMultiLocation(flag(dto.getMultiLocation()));
         plan.setAiCopilot(flag(dto.getAiCopilot()));
         plan.setDescription(dto.getDescription());
-        plan.setExtraFeatures(dto.getExtraFeatures() != null ? new java.util.ArrayList<>(dto.getExtraFeatures()) : new java.util.ArrayList<>());
 
         SubscriptionPlan updated = subscriptionPlanRepository.save(plan);
         return toDTO(updated);
@@ -157,7 +155,6 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 .description(plan.getDescription())
                 .createdAt(plan.getCreatedAt())
                 .updatedAt(plan.getUpdatedAt())
-                .extraFeatures(plan.getExtraFeatures() != null ? new ArrayList<>(plan.getExtraFeatures()) : new ArrayList<>())
                 .build();
     }
 
@@ -179,7 +176,6 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 .multiLocation(flag(dto.getMultiLocation()))
                 .aiCopilot(flag(dto.getAiCopilot()))
                 .description(dto.getDescription())
-                .extraFeatures(dto.getExtraFeatures() != null ? new java.util.ArrayList<>(dto.getExtraFeatures()) : new java.util.ArrayList<>())
                 .build();
     }
 }

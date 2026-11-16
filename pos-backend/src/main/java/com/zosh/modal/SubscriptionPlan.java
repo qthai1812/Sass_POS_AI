@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Entity
 @Getter
@@ -15,7 +14,7 @@ import java.util.List;
 public class SubscriptionPlan {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
@@ -41,9 +40,6 @@ public class SubscriptionPlan {
     private Boolean aiCopilot;
 
     private String description;
-
-    @ElementCollection
-    private List<String> extraFeatures;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

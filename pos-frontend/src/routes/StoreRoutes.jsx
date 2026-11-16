@@ -19,6 +19,7 @@ import Stores from "../pages/store/storeInformation/Stores";
 import PricingSection from "../pages/common/Landing/PricingSection";
 import Upgrade from "../pages/store/upgrade/Upgrade";
 import Alerts from "../pages/store/Alerts/Alerts";
+import StoreInventoryTransfer from "../pages/store/Inventory/StoreInventoryTransfer";
 import Coupons from "../pages/store/store-admin/Coupons";
 import Customers from "../pages/common/Customers/Customers";
 import FeatureGate from "../components/FeatureGate";
@@ -34,6 +35,7 @@ const StoreRoutes = () => {
         <Route path="employees" element={<StoreEmployees />} />
         <Route path="customers" element={<Customers scope="STORE" />} />
         <Route path="products" element={<Products />} />
+        <Route path="inventory" element={<StoreInventoryTransfer />} />
         <Route path="stores" element={<Stores />} />
         
         <Route path="sales" element={<Sales />} />

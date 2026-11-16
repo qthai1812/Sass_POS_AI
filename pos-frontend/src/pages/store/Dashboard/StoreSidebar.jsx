@@ -12,6 +12,7 @@ import {
   FileText,
   Tag,
   Truck,
+  ArrowRightLeft,
   BadgeDollarSign,
   LogOut,
 } from "lucide-react";
@@ -37,6 +38,11 @@ const navLinks = [
     name: "Products",
     path: "/store/products",
     icon: <ShoppingCart className="w-5 h-5" />,
+  },
+  {
+    name: "Inventory Transfer",
+    path: "/store/inventory",
+    icon: <ArrowRightLeft className="w-5 h-5" />,
   },
   {
     name: "Categories",
