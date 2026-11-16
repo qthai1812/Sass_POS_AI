@@ -35,6 +35,10 @@ import {
   getInventoryByBranch,
   transferInventory,
 } from "../../../Redux Toolkit/features/inventory/inventoryThunks";
+import {
+  buildStockLookupMap,
+  validateInventoryTransfer,
+} from "../Inventory/inventoryTransferUtils";
 
 const Alerts = () => {
   const dispatch = useDispatch();
@@ -99,16 +103,10 @@ const Alerts = () => {
     };
   }, [dispatch, fromBranchId, transferOpen]);
 
-  const sourceStockMap = useMemo(() => {
-    const map = {};
-    (sourceInventories || []).forEach((inv) => {
-      const pid = Number(inv.productId ?? inv.product?.id);
-      if (pid) {
-        map[pid] = (map[pid] || 0) + Number(inv.quantity ?? 0);
-      }
-    });
-    return map;
-  }, [sourceInventories]);
+  const sourceStockMap = useMemo(
+    () => buildStockLookupMap(sourceInventories),
+    [sourceInventories],
+  );
 
   const availableSourceStock = productId
     ? (sourceStockMap[Number(productId)] ?? 0)
@@ -128,35 +126,19 @@ const Alerts = () => {
 
   const handleTransferSubmit = async (e) => {
     e.preventDefault();
-    if (!fromBranchId || !toBranchId || !productId) {
+    const check = validateInventoryTransfer({
+      branchCount: branches.length,
+      fromBranchId,
+      toBranchId,
+      productId,
+      quantity,
+      availableSourceStock: availableSourceStock ?? 0,
+      loadingSourceStock,
+    });
+    if (!check.valid) {
       toast({
-        title: "Thiếu thông tin",
-        description:
-          "Vui lòng chọn đầy đủ chi nhánh nguồn, chi nhánh đích và sản phẩm.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (String(fromBranchId) === String(toBranchId)) {
-      toast({
-        title: "Chi nhánh không hợp lệ",
-        description: "Chi nhánh nguồn và chi nhánh đích phải khác nhau.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (!Number.isInteger(numericQty) || numericQty <= 0) {
-      toast({
-        title: "Số lượng không hợp lệ",
-        description: "Số lượng điều chuyển phải là số nguyên lớn hơn 0.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (numericQty > (availableSourceStock ?? 0)) {
-      toast({
-        title: "Không đủ tồn kho nguồn",
-        description: `Chi nhánh nguồn chỉ còn ${availableSourceStock ?? 0} sản phẩm khả dụng.`,
+        title: check.errorTitle,
+        description: check.errorMessage,
         variant: "destructive",
       });
       return;
@@ -224,17 +206,22 @@ const Alerts = () => {
               </Link>
             </Button>
           ) : (
-            <Button
-              onClick={() => {
-                resetForm();
-                setTransferOpen(true);
-              }}
-              disabled={!ready && entLoading}
-              className="bg-emerald-600 hover:bg-emerald-700 gap-2"
-            >
-              <ArrowRightLeft className="w-4 h-4" />
-              Điều chuyển tồn kho liên chi nhánh
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" asChild>
+                <Link to="/store/inventory">Mở trang điều chuyển kho</Link>
+              </Button>
+              <Button
+                onClick={() => {
+                  resetForm();
+                  setTransferOpen(true);
+                }}
+                disabled={!ready && entLoading}
+                className="bg-emerald-600 hover:bg-emerald-700 gap-2"
+              >
+                <ArrowRightLeft className="w-4 h-4" />
+                Điều chuyển nhanh
+              </Button>
+            </div>
           )}
         </div>
       </div>
