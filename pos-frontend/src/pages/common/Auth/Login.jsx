@@ -250,13 +250,13 @@ const Login = () => {
             <p className="text-sm text-muted-foreground text-center">
               <strong>Demo Accounts (Password: 123456):</strong>
               <br />
-              Super Admin: admin@pos.com
+              Super Admin: admin@yopmail.com
               <br />
-              Store Admin: storeadmin1@pos.com
+              Store Admin: storeadmin1@yopmail.com
               <br />
-              Branch Manager: manager.b1@pos.com
+              Branch Manager: manager.b1@yopmail.com
               <br />
-              Cashier: cashier.b1@pos.com
+              Cashier: cashier.b1@yopmail.com
             </p>
           </div>
         </div>

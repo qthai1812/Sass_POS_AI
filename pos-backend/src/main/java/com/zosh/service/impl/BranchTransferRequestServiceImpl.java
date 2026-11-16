@@ -9,6 +9,8 @@ import com.zosh.modal.ShiftReport;
 import com.zosh.modal.Store;
 import com.zosh.modal.User;
 import com.zosh.payload.dto.BranchTransferRequestDTO;
+import com.zosh.payload.dto.BranchTransferSummaryDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.BranchRepository;
 import com.zosh.repository.BranchTransferRequestRepository;
 import com.zosh.repository.ShiftReportRepository;
@@ -18,18 +20,26 @@ import com.zosh.service.AccessControlService;
 import com.zosh.service.BranchTransferRequestService;
 import com.zosh.service.ShiftReportService;
 import com.zosh.service.UserService;
+import com.zosh.util.PaginationUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class BranchTransferRequestServiceImpl implements BranchTransferRequestService {
+
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "status", "createdAt", "reviewedAt"
+    );
 
     private final BranchTransferRequestRepository transferRequestRepository;
     private final BranchRepository branchRepository;
@@ -162,9 +172,7 @@ public class BranchTransferRequestServiceImpl implements BranchTransferRequestSe
         return toDTO(transferRequestRepository.save(request));
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<BranchTransferRequestDTO> getStoreRequests(Long storeId) throws Exception {
+    private void assertStoreOwnerCanAccessStore(Long storeId) throws Exception {
         User currentUser = userService.getCurrentUser();
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new UserException("Không tìm thấy cửa hàng."));
@@ -172,11 +180,46 @@ public class BranchTransferRequestServiceImpl implements BranchTransferRequestSe
         if (!accessControl.isStoreLevelUser(currentUser, store)) {
             throw new AccessDeniedException("Chỉ Chủ cửa hàng (Store Owner) mới có quyền xem danh sách đơn xin chuyển chi nhánh.");
         }
+    }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<BranchTransferRequestDTO> getStoreRequests(Long storeId) throws Exception {
+        assertStoreOwnerCanAccessStore(storeId);
         return transferRequestRepository.findByStoreIdOrderByCreatedAtDesc(storeId)
                 .stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<BranchTransferRequestDTO> getStoreRequestsPaged(
+            Long storeId,
+            BranchTransferRequestStatus status,
+            int page,
+            int size,
+            String sortBy,
+            String sortDir
+    ) throws Exception {
+        assertStoreOwnerCanAccessStore(storeId);
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_SORT_FIELDS, "createdAt"
+        );
+        Page<BranchTransferRequest> reqPage = transferRequestRepository.findByStoreIdPaged(storeId, status, pageable);
+        return PageResponse.from(reqPage, this::toDTO);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BranchTransferSummaryDTO getStoreRequestSummary(Long storeId) throws Exception {
+        assertStoreOwnerCanAccessStore(storeId);
+        long total = transferRequestRepository.countByStoreId(storeId);
+        long pending = transferRequestRepository.countByStoreIdAndStatus(storeId, BranchTransferRequestStatus.PENDING);
+        return BranchTransferSummaryDTO.builder()
+                .totalRequests(total)
+                .pendingRequests(pending)
+                .build();
     }
 
     private void clearPreviousManagedBranches(Long userId, Long keepBranchId) {

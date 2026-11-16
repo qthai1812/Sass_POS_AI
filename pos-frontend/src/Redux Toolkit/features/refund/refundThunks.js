@@ -179,6 +179,28 @@ export const getRefundsByBranch = createAsyncThunk(
   },
 );
 
+// 🔹 Get Refunds by Branch (Paged)
+export const getRefundsByBranchPaged = createAsyncThunk(
+  "refund/getByBranchPaged",
+  async (
+    { branchId, page = 0, size = 10, sortBy = "createdAt", sortDir = "desc" },
+    { rejectWithValue },
+  ) => {
+    try {
+      const headers = getAuthHeaders();
+      const res = await api.get(`/api/refunds/branch/${branchId}/paged`, {
+        headers,
+        params: { page, size, sortBy, sortDir },
+      });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch paged refunds by branch",
+      );
+    }
+  },
+);
+
 // 🔹 Get Refunds by Order
 export const getRefundsByOrder = createAsyncThunk(
   "refund/getByOrder",

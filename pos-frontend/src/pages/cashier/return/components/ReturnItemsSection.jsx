@@ -19,13 +19,9 @@ import { useToast } from "@/components/ui/use-toast";
 import { useSelector, useDispatch } from "react-redux";
 import {
   createRefund,
-  getRefundsByBranch,
   getRefundsByOrder,
 } from "../../../../Redux Toolkit/features/refund/refundThunks";
-import {
-  getOrderById,
-  getOrdersByBranch,
-} from "../../../../Redux Toolkit/features/order/orderThunks";
+import { getOrderById } from "../../../../Redux Toolkit/features/order/orderThunks";
 import { getInventoryByBranch } from "../../../../Redux Toolkit/features/inventory/inventoryThunks";
 import { getCurrentShiftProgress } from "../../../../Redux Toolkit/features/shiftReport/shiftReportThunks";
 import {
@@ -288,8 +284,6 @@ const ReturnItemsSection = ({
       const createdRefund = await dispatch(createRefund(refundDTO)).unwrap();
 
       if (effectiveBranchId) {
-        dispatch(getRefundsByBranch(effectiveBranchId));
-        dispatch(getOrdersByBranch({ branchId: effectiveBranchId }));
         dispatch(getInventoryByBranch(effectiveBranchId));
       }
       dispatch(getRefundsByOrder(selectedOrder.id));

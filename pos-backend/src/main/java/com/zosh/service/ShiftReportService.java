@@ -1,6 +1,7 @@
 package com.zosh.service;
 
 import com.zosh.payload.dto.ShiftReportDTO;
+import com.zosh.payload.response.PageResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,9 +22,15 @@ public interface ShiftReportService {
 
     List<ShiftReportDTO> getAllShiftReports();
 
+    PageResponse<ShiftReportDTO> getAllShiftReportsPaged(int page, int size, String sortBy, String sortDir);
+
     List<ShiftReportDTO> getShiftReportsByBranchId(Long branchId);
 
+    PageResponse<ShiftReportDTO> getShiftReportsByBranchIdPaged(Long branchId, int page, int size, String sortBy, String sortDir) throws Exception;
+
     List<ShiftReportDTO> getShiftReportsByCashierId(Long cashierId);
+
+    PageResponse<ShiftReportDTO> getShiftReportsByCashierIdPaged(Long cashierId, int page, int size, String sortBy, String sortDir) throws Exception;
 
     ShiftReportDTO getCurrentShiftProgress(Long cashierId) throws Exception;
 

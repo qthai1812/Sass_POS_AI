@@ -4,6 +4,7 @@ import com.zosh.domain.PaymentGateway;
 import com.zosh.domain.SubscriptionStatus;
 import com.zosh.payload.dto.PlanEntitlementsDTO;
 import com.zosh.payload.dto.SubscriptionDTO;
+import com.zosh.payload.response.PageResponse;
 
 import java.util.List;
 
@@ -15,6 +16,7 @@ public interface SubscriptionService {
     SubscriptionDTO updatePaymentStatus(Long subscriptionId, SubscriptionStatus status) throws Exception;
     List<SubscriptionDTO> getStoreSubscriptions(Long storeId, SubscriptionStatus status) throws Exception;
     List<SubscriptionDTO> getAllSubscriptions(SubscriptionStatus status) throws Exception;
+    PageResponse<SubscriptionDTO> getAllSubscriptionsPaged(SubscriptionStatus status, Integer expiringDays, int page, int size, String sortBy, String sortDir) throws Exception;
     List<SubscriptionDTO> getExpiringSubscriptions(int days) throws Exception;
     long countByStatus(SubscriptionStatus status) throws Exception;
     int expireOverdueSubscriptions();

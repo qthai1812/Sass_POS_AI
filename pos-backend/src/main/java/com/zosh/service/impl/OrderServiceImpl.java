@@ -8,6 +8,7 @@ import com.zosh.mapper.OrderMapper;
 import com.zosh.modal.*;
 import com.zosh.payload.dto.OrderDTO;
 import com.zosh.payload.dto.OrderItemDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.*;
 import com.zosh.service.AccessControlService;
 import com.zosh.service.OrderService;
@@ -18,19 +19,25 @@ import com.zosh.service.order.CustomerLoyaltyService;
 import com.zosh.service.order.OrderInventoryCoordinator;
 import com.zosh.service.order.OrderPricingCalculator;
 import com.zosh.service.order.OrderPricingCalculator.DiscountResult;
+import com.zosh.util.PaginationUtils;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -38,6 +45,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
+
+    private static final Set<String> ALLOWED_ORDER_SORT_FIELDS = Set.of(
+            "id", "createdAt", "totalAmount", "status", "paymentType"
+    );
 
     private final UserService userService;
     private final ProductRepository productRepository;
@@ -501,15 +512,52 @@ public class OrderServiceImpl implements OrderService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<OrderDTO> getOrdersByBranchPaged(Long branchId,
+                                                         Long customerId,
+                                                         Long cashierId,
+                                                         PaymentType paymentType,
+                                                         OrderStatus status,
+                                                         int page,
+                                                         int size,
+                                                         String sortBy,
+                                                         String sortDir) throws Exception {
+        return getOrdersByBranchPaged(
+                branchId, customerId, cashierId, paymentType, status, "", page, size, sortBy, sortDir
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<OrderDTO> getOrdersByBranchPaged(Long branchId,
+                                                         Long customerId,
+                                                         Long cashierId,
+                                                         PaymentType paymentType,
+                                                         OrderStatus status,
+                                                         String keyword,
+                                                         int page,
+                                                         int size,
+                                                         String sortBy,
+                                                         String sortDir) throws Exception {
+        assertBranchAccessById(branchId);
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_ORDER_SORT_FIELDS, "createdAt"
+        );
+        String cleanKeyword = normalizeOrderSearchKeyword(keyword);
+        Page<Long> idPage = orderRepository.findBranchOrderIdsPaged(
+                branchId, customerId, cashierId, paymentType, status, cleanKeyword, pageable
+        );
+        return hydratePagedOrders(idPage);
+    }
+
     private void assertBranchAccessById(Long branchId) throws Exception {
         Branch branch = branchRepository.findById(branchId)
                 .orElseThrow(() -> new Exception("Branch not found with id: " + branchId));
         accessControl.assertCanAccessBranch(userService.getCurrentUser(), branch);
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<OrderDTO> getOrderByCashier(Long cashierId) throws Exception {
+    private void assertCanViewCashierOrders(Long cashierId) throws Exception {
         User current = userService.getCurrentUser();
         if (!current.getId().equals(cashierId)) {
             User target = userService.getUserById(cashierId);
@@ -519,9 +567,86 @@ public class OrderServiceImpl implements OrderService {
                 throw new Exception("You do not have permission to view orders of this cashier");
             }
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderDTO> getOrderByCashier(Long cashierId) throws Exception {
+        assertCanViewCashierOrders(cashierId);
         return orderRepository.findByCashierId(cashierId).stream()
                 .map(OrderMapper::toDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<OrderDTO> getOrdersByCashierPaged(Long cashierId,
+                                                          String keyword,
+                                                          LocalDate startDate,
+                                                          LocalDate endDate,
+                                                          int page,
+                                                          int size,
+                                                          String sortBy,
+                                                          String sortDir) throws Exception {
+        assertCanViewCashierOrders(cashierId);
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_ORDER_SORT_FIELDS, "createdAt"
+        );
+        String cleanKeyword = normalizeOrderSearchKeyword(keyword);
+        LocalDateTime fromDate = startDate != null ? startDate.atStartOfDay() : null;
+        LocalDateTime toDate = endDate != null ? endDate.atTime(LocalTime.MAX) : null;
+
+        Page<Long> idPage = orderRepository.findCashierOrderIdsPaged(
+                cashierId, cleanKeyword, fromDate, toDate, pageable
+        );
+        return hydratePagedOrders(idPage);
+    }
+
+    private String normalizeOrderSearchKeyword(String keyword) {
+        if (keyword == null) {
+            return "";
+        }
+        String trimmed = keyword.trim();
+        if (trimmed.startsWith("#") && trimmed.length() > 1
+                && trimmed.substring(1).chars().allMatch(Character::isDigit)) {
+            return trimmed.substring(1);
+        }
+        return trimmed;
+    }
+
+    private PageResponse<OrderDTO> hydratePagedOrders(Page<Long> idPage) {
+        List<Long> ids = idPage.getContent();
+        if (ids.isEmpty()) {
+            return PageResponse.of(idPage, Collections.emptyList());
+        }
+        Map<Long, Order> orderById = orderRepository.findAllWithDetailsByIdIn(ids).stream()
+                .collect(Collectors.toMap(Order::getId, Function.identity(), (a, b) -> a));
+        Map<Long, Double> refundedByOrderId = loadRefundedAmountMap(ids);
+        List<OrderDTO> content = ids.stream()
+                .map(orderById::get)
+                .filter(Objects::nonNull)
+                .map(order -> {
+                    OrderDTO dto = OrderMapper.toDTO(order);
+                    dto.setRefundedAmount(refundedByOrderId.getOrDefault(order.getId(), 0.0));
+                    return dto;
+                })
+                .collect(Collectors.toList());
+        return PageResponse.of(idPage, content);
+    }
+
+    private Map<Long, Double> loadRefundedAmountMap(List<Long> orderIds) {
+        List<Object[]> rows = refundRepository.sumRefundAmountsByOrderIds(orderIds);
+        if (rows == null || rows.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<Long, Double> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            if (row != null && row.length >= 2 && row[0] instanceof Number idNum) {
+                double sum = row[1] instanceof Number amountNum ? amountNum.doubleValue() : 0.0;
+                result.put(idNum.longValue(), sum);
+            }
+        }
+        return result;
     }
 
     @Override

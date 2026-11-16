@@ -7,6 +7,7 @@ import com.zosh.domain.UserRole;
 import com.zosh.modal.*;
 import com.zosh.payload.dto.OrderDTO;
 import com.zosh.payload.dto.OrderItemDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.*;
 import com.zosh.service.AccessControlService;
 import com.zosh.service.PaymentGatewayService;
@@ -19,12 +20,20 @@ import com.zosh.service.order.OrderPricingCalculator.DiscountResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -357,5 +366,121 @@ class OrderServiceImplTest {
         verify(inventoryCoordinator, never()).restoreRemainingForOrder(any(), anyList());
         verify(loyaltyService, never()).revertRemaining(any(), anyList());
         verify(orderRepository).delete(order);
+    }
+
+    @Test
+    void getOrdersByBranchPaged_preservesOrderedIdsAndClampsSize() throws Exception {
+        when(branchRepository.findById(10L)).thenReturn(Optional.of(branch));
+        when(userService.getCurrentUser()).thenReturn(manager);
+
+        Page<Long> idPage = new PageImpl<>(List.of(20L, 10L), PageRequest.of(1, 100), 102);
+        when(orderRepository.findBranchOrderIdsPaged(
+                eq(10L), isNull(), eq(100L), eq(PaymentType.CASH), eq(OrderStatus.COMPLETED), eq(""), any(Pageable.class)
+        )).thenReturn(idPage);
+
+        Order o10 = Order.builder().id(10L).branch(branch).cashier(cashier).totalAmount(100.0).build();
+        Order o20 = Order.builder().id(20L).branch(branch).cashier(cashier).totalAmount(200.0).build();
+        // Returned in reverse order from IN clause to verify sequence preservation
+        when(orderRepository.findAllWithDetailsByIdIn(List.of(20L, 10L))).thenReturn(List.of(o10, o20));
+        when(refundRepository.sumRefundAmountsByOrderIds(List.of(20L, 10L)))
+                .thenReturn(Collections.singletonList(new Object[]{20L, 75.0}));
+
+        PageResponse<OrderDTO> res = orderService.getOrdersByBranchPaged(
+                10L, null, 100L, PaymentType.CASH, OrderStatus.COMPLETED, -1, 500, "totalAmount", "desc"
+        );
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(orderRepository).findBranchOrderIdsPaged(
+                eq(10L), isNull(), eq(100L), eq(PaymentType.CASH), eq(OrderStatus.COMPLETED), eq(""), pageableCaptor.capture()
+        );
+        assertEquals(0, pageableCaptor.getValue().getPageNumber());
+        assertEquals(100, pageableCaptor.getValue().getPageSize());
+
+        assertEquals(2, res.getContent().size());
+        assertEquals(20L, res.getContent().get(0).getId());
+        assertEquals(75.0, res.getContent().get(0).getRefundedAmount());
+        assertEquals(10L, res.getContent().get(1).getId());
+        assertEquals(0.0, res.getContent().get(1).getRefundedAmount());
+        assertEquals(102L, res.getTotalElements());
+        assertEquals(2, res.getTotalPages());
+    }
+
+    @Test
+    void getOrdersByBranchPaged_withHashKeyword_normalizesKeywordAndHydratesRefundedAmount() throws Exception {
+        when(branchRepository.findById(10L)).thenReturn(Optional.of(branch));
+        when(userService.getCurrentUser()).thenReturn(cashier);
+
+        Page<Long> idPage = new PageImpl<>(List.of(951L), PageRequest.of(0, 10), 1);
+        when(orderRepository.findBranchOrderIdsPaged(
+                eq(10L), isNull(), isNull(), isNull(), isNull(), eq("951"), any(Pageable.class)
+        )).thenReturn(idPage);
+
+        Order o951 = Order.builder().id(951L).branch(branch).cashier(cashier).totalAmount(299.0).build();
+        when(orderRepository.findAllWithDetailsByIdIn(List.of(951L))).thenReturn(List.of(o951));
+        when(refundRepository.sumRefundAmountsByOrderIds(List.of(951L)))
+                .thenReturn(Collections.singletonList(new Object[]{951L, 100.0}));
+
+        PageResponse<OrderDTO> res = orderService.getOrdersByBranchPaged(
+                10L, null, null, null, null, " #951 ", 0, 10, "createdAt", "desc"
+        );
+
+        assertEquals(1, res.getContent().size());
+        assertEquals(951L, res.getContent().get(0).getId());
+        assertEquals(100.0, res.getContent().get(0).getRefundedAmount());
+    }
+
+    @Test
+    void getOrdersByBranchPaged_emptyPage_skipsDetailHydrationQuery() throws Exception {
+        when(branchRepository.findById(10L)).thenReturn(Optional.of(branch));
+        when(userService.getCurrentUser()).thenReturn(manager);
+        Page<Long> emptyPage = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
+        when(orderRepository.findBranchOrderIdsPaged(
+                eq(10L), isNull(), isNull(), isNull(), isNull(), eq(""), any(Pageable.class)
+        )).thenReturn(emptyPage);
+
+        PageResponse<OrderDTO> res = orderService.getOrdersByBranchPaged(
+                10L, null, null, null, null, 0, 10, "createdAt", "desc"
+        );
+
+        assertTrue(res.getContent().isEmpty());
+        assertEquals(0L, res.getTotalElements());
+        verify(orderRepository, never()).findAllWithDetailsByIdIn(anyList());
+        verify(refundRepository, never()).sumRefundAmountsByOrderIds(anyList());
+    }
+
+    @Test
+    void getOrdersByCashierPaged_normalizesHashKeywordAndDateBounds() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(cashier);
+        LocalDate start = LocalDate.of(2026, 11, 1);
+        LocalDate end = LocalDate.of(2026, 11, 16);
+
+        Page<Long> idPage = new PageImpl<>(List.of(55L), PageRequest.of(0, 10), 1);
+        when(orderRepository.findCashierOrderIdsPaged(
+                eq(100L), eq("55"), eq(start.atStartOfDay()), eq(end.atTime(LocalTime.MAX)), any(Pageable.class)
+        )).thenReturn(idPage);
+
+        Order o55 = Order.builder().id(55L).branch(branch).cashier(cashier).totalAmount(500.0).build();
+        when(orderRepository.findAllWithDetailsByIdIn(List.of(55L))).thenReturn(List.of(o55));
+
+        PageResponse<OrderDTO> res = orderService.getOrdersByCashierPaged(
+                100L, " #55 ", start, end, 0, 10, "createdAt", "desc"
+        );
+
+        assertEquals(1, res.getContent().size());
+        assertEquals(55L, res.getContent().get(0).getId());
+    }
+
+    @Test
+    void getOrdersByCashierPaged_otherCashierUnauthorized_throwsAccessDenied() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(cashier);
+        User otherCashier = new User();
+        otherCashier.setId(999L);
+        otherCashier.setBranch(branch);
+        when(userService.getUserById(999L)).thenReturn(otherCashier);
+        doThrow(new AccessDeniedException("Denied")).when(accessControl).assertCanManageBranch(cashier, branch);
+
+        assertThrows(AccessDeniedException.class, () ->
+                orderService.getOrdersByCashierPaged(999L, "", null, null, 0, 10, "createdAt", "desc")
+        );
     }
 }

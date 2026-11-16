@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,12 +12,70 @@ import {
 } from "@/components/ui/table";
 import { SearchIcon } from "lucide-react";
 import { formatDate } from "../../order/data";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { getOrdersByBranchPaged } from "@/Redux Toolkit/features/order/orderThunks";
+import DataTablePagination from "@/components/ui/data-table-pagination";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 
-const OrderTable = ({ handleSelectOrder }) => {
-  const { orders = [], loading, error } = useSelector((state) => state.order);
+const OrderTable = ({
+  branchId,
+  handleSelectOrder,
+  searchQuery = "",
+  onSearchQueryChange,
+  page = 0,
+  onPageChange,
+  pageSize = DEFAULT_PAGE_SIZE,
+  onPageSizeChange,
+  refreshKey = 0,
+}) => {
+  const dispatch = useDispatch();
+  const {
+    pagedBranchOrders,
+    pagedBranchLoading: loading,
+    error,
+  } = useSelector((state) => state.order);
   const { refundsByBranch = [] } = useSelector((state) => state.refund);
-  const [searchQuery, setSearchQuery] = useState("");
+
+  const initialTrimmedSearch = String(searchQuery || "").trim();
+  const [debouncedSearch, setDebouncedSearch] = useState(initialTrimmedSearch);
+  const debouncedSearchRef = useRef(initialTrimmedSearch);
+  const debounceTimerRef = useRef(null);
+
+  const orders = pagedBranchOrders?.content || [];
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!branchId) return;
+    dispatch(
+      getOrdersByBranchPaged({
+        branchId,
+        keyword: debouncedSearch,
+        page,
+        size: pageSize,
+        sortBy: "createdAt",
+        sortDir: "desc",
+      }),
+    );
+  }, [dispatch, branchId, debouncedSearch, page, pageSize, refreshKey]);
+
+  const handleSearchInputChange = (e) => {
+    const val = e.target.value;
+    onSearchQueryChange?.(val);
+    clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      const next = val.trim();
+      if (debouncedSearchRef.current !== next) {
+        debouncedSearchRef.current = next;
+        setDebouncedSearch(next);
+        onPageChange?.(0);
+      }
+    }, 350);
+  };
 
   const refundedAmountByOrderId = useMemo(() => {
     const map = new Map();
@@ -32,19 +90,8 @@ const OrderTable = ({ handleSelectOrder }) => {
     return map;
   }, [refundsByBranch]);
 
-  const filteredOrders = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return orders;
-    return orders.filter(
-      (order) =>
-        String(order.id).toLowerCase().includes(q) ||
-        (order.customer?.fullName || "").toLowerCase().includes(q) ||
-        (order.paymentType || "").toLowerCase().includes(q),
-    );
-  }, [orders, searchQuery]);
-
   return (
-    <div className="w-full p-4 flex flex-col min-h-0">
+    <div className="w-full p-4 flex flex-col min-h-0 flex-1">
       <div className="mb-4 max-w-md relative shrink-0">
         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -52,7 +99,7 @@ const OrderTable = ({ handleSelectOrder }) => {
           placeholder="Search by Order ID, customer name, or payment mode..."
           className="pl-9"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={handleSearchInputChange}
         />
       </div>
 
@@ -65,7 +112,7 @@ const OrderTable = ({ handleSelectOrder }) => {
           <div className="flex flex-col items-center justify-center h-full text-center text-destructive">
             <span>{error}</span>
           </div>
-        ) : filteredOrders.length > 0 ? (
+        ) : orders.length > 0 ? (
           <Table>
             <TableHeader>
               <TableRow>
@@ -78,11 +125,13 @@ const OrderTable = ({ handleSelectOrder }) => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredOrders.map((order) => {
+              {orders.map((order) => {
                 const statusUpper = String(order.status || "").toUpperCase();
                 const orderTotal = Number(order.totalAmount || 0);
                 const refundedSoFar = Number(
-                  refundedAmountByOrderId.get(order.id) || 0,
+                  order.refundedAmount ??
+                    refundedAmountByOrderId.get(order.id) ??
+                    0,
                 );
                 const isFullyRefunded =
                   statusUpper === "REFUNDED" ||
@@ -166,6 +215,19 @@ const OrderTable = ({ handleSelectOrder }) => {
           </div>
         )}
       </div>
+
+      <DataTablePagination
+        page={pagedBranchOrders?.pageNumber ?? page}
+        pageSize={pagedBranchOrders?.pageSize ?? pageSize}
+        totalElements={pagedBranchOrders?.totalElements ?? 0}
+        totalPages={pagedBranchOrders?.totalPages ?? 0}
+        currentCount={orders.length}
+        onPageChange={(nextPage) => onPageChange?.(nextPage)}
+        onPageSizeChange={(nextSize) => onPageSizeChange?.(nextSize)}
+        loading={loading}
+        itemLabel="đơn hàng"
+        className="shrink-0 mt-3 pt-3 border-t"
+      />
     </div>
   );
 };

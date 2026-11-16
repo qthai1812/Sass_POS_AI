@@ -25,6 +25,7 @@ const InventoryFilters = ({
   inventoryRows = [],
   inventories = [],
   filteredInventories = [],
+  totalQuantity: totalQuantityProp,
 }) => {
   // Đảm bảo luôn là mảng hợp lệ để không bao giờ bị lỗi .map() of undefined
   const rawCategories =
@@ -81,10 +82,10 @@ const InventoryFilters = ({
     }
   };
 
-  const totalQuantity = safeRows.reduce(
-    (sum, item) => sum + Number(item?.quantity ?? 0),
-    0,
-  );
+  const totalQuantity =
+    totalQuantityProp != null
+      ? Number(totalQuantityProp)
+      : safeRows.reduce((sum, item) => sum + Number(item?.quantity ?? 0), 0);
 
   return (
     <Card>

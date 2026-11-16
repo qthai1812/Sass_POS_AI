@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Select,
   SelectContent,
@@ -7,35 +7,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Filter } from "lucide-react";
-import { useDispatch, useSelector } from "react-redux";
-import { paymentModeMap, statusMap } from "./data";
-import { getOrdersByBranch } from "../../../Redux Toolkit/features/order/orderThunks";
+import { useSelector } from "react-redux";
 
-const OrdersFilters = () => {
-  const dispatch = useDispatch();
-  const branchId = useSelector((state) => state.branch.branch?.id);
+const OrdersFilters = ({
+  filters = { cashierId: "all", paymentMode: "all", status: "all" },
+  onFilterChange,
+}) => {
   const { employees } = useSelector((state) => state.employee);
 
-  const [filters, setFilters] = useState({
-    cashierId: "all",
-    paymentMode: "all",
-    status: "all",
-  });
-
-  const handleFilterChange = (updatedFilters) => {
-    setFilters(updatedFilters);
-    if (branchId) {
-      const data = {
-        branchId,
-        cashierId:
-          updatedFilters.cashierId !== "all"
-            ? updatedFilters.cashierId
-            : undefined,
-        paymentType: paymentModeMap[updatedFilters.paymentMode],
-        status: statusMap[updatedFilters.status],
-      };
-      dispatch(getOrdersByBranch(data));
-    }
+  const handleUpdate = (updatedFilters) => {
+    onFilterChange?.(updatedFilters);
   };
 
   return (
@@ -45,7 +26,7 @@ const OrdersFilters = () => {
         <Select
           value={filters.paymentMode}
           onValueChange={(value) =>
-            handleFilterChange({ ...filters, paymentMode: value })
+            handleUpdate({ ...filters, paymentMode: value })
           }
         >
           <SelectTrigger
@@ -67,7 +48,7 @@ const OrdersFilters = () => {
         <Select
           value={filters.cashierId}
           onValueChange={(value) =>
-            handleFilterChange({ ...filters, cashierId: value })
+            handleUpdate({ ...filters, cashierId: value })
           }
         >
           <SelectTrigger
@@ -92,7 +73,7 @@ const OrdersFilters = () => {
         <Select
           value={filters.status}
           onValueChange={(value) =>
-            handleFilterChange({ ...filters, status: value })
+            handleUpdate({ ...filters, status: value })
           }
         >
           <SelectTrigger

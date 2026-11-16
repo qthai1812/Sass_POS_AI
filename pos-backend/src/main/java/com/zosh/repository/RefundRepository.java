@@ -1,6 +1,8 @@
 package com.zosh.repository;
 
 import com.zosh.modal.Refund;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -68,4 +70,22 @@ public interface RefundRepository extends JpaRepository<Refund, Long> {
                    OR r.order.status = com.zosh.domain.OrderStatus.PARTIALLY_REFUNDED)
             """)
     Double sumRefundsOnCompletedOrdersByBranchId(@Param("branchId") Long branchId);
+
+    @Query(
+            value = "SELECT r.id FROM Refund r WHERE r.branch.id = :branchId",
+            countQuery = "SELECT COUNT(r.id) FROM Refund r WHERE r.branch.id = :branchId"
+    )
+    Page<Long> findBranchRefundIdsPaged(@Param("branchId") Long branchId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"order", "cashier", "branch", "branch.store", "shiftReport", "items"})
+    @Query("SELECT DISTINCT r FROM Refund r WHERE r.id IN :ids")
+    List<Refund> findAllWithDetailsByIdIn(@Param("ids") List<Long> ids);
+
+    @Query("""
+            SELECT r.order.id, COALESCE(SUM(r.amount), 0.0)
+            FROM Refund r
+            WHERE r.order.id IN :orderIds
+            GROUP BY r.order.id
+            """)
+    List<Object[]> sumRefundAmountsByOrderIds(@Param("orderIds") List<Long> orderIds);
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   Card,
@@ -29,22 +29,50 @@ import { Label } from "../../components/ui/label";
 import { DollarSign, Edit, TrendingUp, TrendingDown } from "lucide-react";
 import { useToast } from "../../components/ui/use-toast";
 import {
-  getAllStores,
+  getAllStoresPaged,
+  getStoreSummary,
   updateStore,
 } from "../../Redux Toolkit/features/store/storeThunks";
+import DataTablePagination from "@/components/ui/data-table-pagination";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 
 export default function CommissionsPage() {
   const dispatch = useDispatch();
-  const { stores = [], loading } = useSelector((state) => state.store);
+  const { pagedStores, pagedLoading: loading, storeSummary } = useSelector(
+    (state) => state.store
+  );
+  const stores = useMemo(() => pagedStores?.content || [], [pagedStores?.content]);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [rateOverrides, setRateOverrides] = useState({});
   const [selectedCommission, setSelectedCommission] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [newRate, setNewRate] = useState("");
   const { toast } = useToast();
 
+  const fetchCommissionsPage = useCallback(() => {
+    dispatch(
+      getAllStoresPaged({
+        page,
+        size: pageSize,
+        sortBy: "createdAt",
+        sortDir: "desc",
+      })
+    );
+  }, [dispatch, page, pageSize]);
+
   useEffect(() => {
-    dispatch(getAllStores());
+    fetchCommissionsPage();
+  }, [fetchCommissionsPage]);
+
+  useEffect(() => {
+    dispatch(getStoreSummary());
   }, [dispatch]);
+
+  const handlePageSizeChange = (nextSize) => {
+    setPageSize(nextSize);
+    setPage(0);
+  };
 
   const commissions = useMemo(() => {
     return (stores || []).map((store) => {
@@ -71,28 +99,10 @@ export default function CommissionsPage() {
     });
   }, [stores, rateOverrides]);
 
-  const totalEarnings = useMemo(
-    () =>
-      commissions.reduce(
-        (sum, item) => sum + (Number(item.totalEarnings) || 0),
-        0,
-      ),
-    [commissions],
-  );
-
-  const averageRate = useMemo(() => {
-    if (!commissions.length) return "0.0";
-    const sum = commissions.reduce(
-      (acc, item) => acc + (Number(item.currentRate) || 0),
-      0,
-    );
-    return (sum / commissions.length).toFixed(1);
-  }, [commissions]);
-
-  const activeStoresCount = useMemo(
-    () => commissions.filter((item) => item.status === "ACTIVE").length,
-    [commissions],
-  );
+  const totalEarnings = Number(storeSummary?.totalEarnings ?? 0);
+  const averageRate = Number(storeSummary?.averageCommissionRate ?? 0).toFixed(1);
+  const activeStoresCount = Number(storeSummary?.activeStores ?? 0);
+  const totalStoresCount = Number(storeSummary?.totalStores ?? 0);
 
   const handleEditCommission = (commission) => {
     setSelectedCommission(commission);
@@ -135,6 +145,8 @@ export default function CommissionsPage() {
           title: "Commission Updated",
           description: `Commission rate for ${selectedCommission.storeName} has been updated to ${rate}%`,
         });
+        dispatch(getStoreSummary());
+        fetchCommissionsPage();
 
         setEditDialogOpen(false);
         setSelectedCommission(null);
@@ -218,7 +230,7 @@ export default function CommissionsPage() {
           <CardContent>
             <div className="text-2xl font-bold">{activeStoresCount}</div>
             <p className="text-xs text-muted-foreground">
-              {commissions.length} total registered store(s)
+              {totalStoresCount} total registered store(s)
             </p>
           </CardContent>
         </Card>
@@ -230,8 +242,8 @@ export default function CommissionsPage() {
           <CardTitle>Store Commission Rates</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="border rounded-lg">
-            <Table>
+          <div className="border rounded-lg overflow-x-auto">
+            <Table className="min-w-[780px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Store Name</TableHead>
@@ -240,7 +252,7 @@ export default function CommissionsPage() {
                   <TableHead>Rate Change</TableHead>
                   <TableHead>Total Earnings</TableHead>
                   <TableHead>Last Updated</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right pr-4">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -295,8 +307,8 @@ export default function CommissionsPage() {
                         <TableCell>
                           ₫{commission.totalEarnings.toLocaleString("vi-VN")}
                         </TableCell>
-                        <TableCell>{commission.lastUpdated}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="whitespace-nowrap">{commission.lastUpdated}</TableCell>
+                        <TableCell className="text-right whitespace-nowrap pr-4">
                           <Button
                             variant="outline"
                             size="sm"
@@ -313,6 +325,18 @@ export default function CommissionsPage() {
               </TableBody>
             </Table>
           </div>
+          <DataTablePagination
+            page={pagedStores?.pageNumber ?? page}
+            pageSize={pagedStores?.pageSize ?? pageSize}
+            totalElements={pagedStores?.totalElements ?? 0}
+            totalPages={pagedStores?.totalPages ?? 0}
+            currentCount={commissions.length}
+            onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+            loading={loading}
+            itemLabel="stores"
+            className="mt-3"
+          />
         </CardContent>
       </Card>
 

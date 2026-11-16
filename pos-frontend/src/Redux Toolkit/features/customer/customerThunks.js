@@ -179,3 +179,47 @@ export const searchCustomers = createAsyncThunk(
     }
   }
 );
+
+// 🔹 Get Customers Paged (server-side search & pagination)
+export const getCustomersPaged = createAsyncThunk(
+  'customer/getPaged',
+  async (
+    { keyword = '', page = 0, size = 10, sortBy = 'createdAt', sortDir = 'desc' } = {},
+    { rejectWithValue }
+  ) => {
+    try {
+      const headers = getAuthHeaders();
+      const params = {
+        page,
+        size,
+        sortBy,
+        sortDir,
+      };
+      if (keyword && keyword.trim()) {
+        params.keyword = keyword.trim();
+      }
+      const res = await api.get('/api/customers/paged', { headers, params });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || 'Failed to fetch paged customers'
+      );
+    }
+  }
+);
+
+// 🔹 Get Customer Summary (aggregate KPIs for the entire store)
+export const getCustomerSummary = createAsyncThunk(
+  'customer/getSummary',
+  async (_, { rejectWithValue }) => {
+    try {
+      const headers = getAuthHeaders();
+      const res = await api.get('/api/customers/summary', { headers });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || 'Failed to fetch customer summary'
+      );
+    }
+  }
+);

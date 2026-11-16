@@ -6,14 +6,11 @@ import {
   ReturnReceiptDialog,
 } from "./components";
 import { useDispatch, useSelector } from "react-redux";
-import { getOrdersByBranch } from "../../../Redux Toolkit/features/order/orderThunks";
-import {
-  getRefundsByBranch,
-  getRefundsByOrder,
-} from "../../../Redux Toolkit/features/refund/refundThunks";
+import { getRefundsByOrder } from "../../../Redux Toolkit/features/refund/refundThunks";
 import { clearRefundsByOrder } from "../../../Redux Toolkit/features/refund/refundSlice";
 import { getCurrentShiftProgress } from "../../../Redux Toolkit/features/shiftReport/shiftReportThunks";
 import { useSidebar } from "../../../context/hooks/useSidebar";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangle } from "lucide-react";
@@ -41,12 +38,18 @@ const ReturnOrderPage = () => {
   const dispatch = useDispatch();
   const { branch } = useSelector((state) => state.branch);
   const { userProfile } = useSelector((state) => state.user);
-  const { orders = [] } = useSelector((state) => state.order);
+  const { pagedBranchOrders, selectedOrder: reduxSelectedOrder } = useSelector(
+    (state) => state.order,
+  );
   const { currentShift, loading: shiftLoading } = useSelector(
     (state) => state.shiftReport,
   );
 
   const [shiftChecked, setShiftChecked] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [tableRefreshKey, setTableRefreshKey] = useState(0);
 
   const isCashier = userProfile?.role === "ROLE_CASHIER";
   const hasActiveShift = Boolean(currentShift?.id && !currentShift?.shiftEnd);
@@ -57,21 +60,24 @@ const ReturnOrderPage = () => {
     userProfile?.branch?.id ||
     selectedOrder?.branchId;
 
-  // Keep selectedOrder synchronized with updated orders list from Redux (e.g. COMPLETED -> PARTIALLY_REFUNDED -> REFUNDED)
+  // Keep selectedOrder synchronized with updated paged/selected order in Redux
   const activeSelectedOrder = useMemo(() => {
     if (!selectedOrder) return null;
-    const latestFromList = (orders || []).find(
+    const latestFromPaged = (pagedBranchOrders?.content || []).find(
       (o) => Number(o?.id) === Number(selectedOrder.id),
     );
-    return latestFromList || selectedOrder;
-  }, [orders, selectedOrder]);
-
-  useEffect(() => {
-    if (resolvedBranchId) {
-      dispatch(getOrdersByBranch({ branchId: resolvedBranchId }));
-      dispatch(getRefundsByBranch(resolvedBranchId));
+    if (
+      reduxSelectedOrder &&
+      Number(reduxSelectedOrder?.id) === Number(selectedOrder.id)
+    ) {
+      return {
+        ...reduxSelectedOrder,
+        refundedAmount:
+          latestFromPaged?.refundedAmount ?? reduxSelectedOrder.refundedAmount,
+      };
     }
-  }, [dispatch, resolvedBranchId]);
+    return latestFromPaged || selectedOrder;
+  }, [pagedBranchOrders?.content, reduxSelectedOrder, selectedOrder]);
 
   useEffect(() => {
     if (!isCashier) {
@@ -155,7 +161,20 @@ const ReturnOrderPage = () => {
 
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
         {!activeSelectedOrder ? (
-          <OrderTable handleSelectOrder={handleSelectOrder} />
+          <OrderTable
+            branchId={resolvedBranchId}
+            handleSelectOrder={handleSelectOrder}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            page={page}
+            onPageChange={setPage}
+            pageSize={pageSize}
+            onPageSizeChange={(nextSize) => {
+              setPageSize(nextSize);
+              setPage(0);
+            }}
+            refreshKey={tableRefreshKey}
+          />
         ) : (
           <>
             <OrderDetailsSection
@@ -168,7 +187,10 @@ const ReturnOrderPage = () => {
               resolvedBranchId={resolvedBranchId}
               isCashier={isCashier}
               hasActiveShift={hasActiveShift}
-              onRefundSuccess={(info) => setLastRefundInfo(info)}
+              onRefundSuccess={(info) => {
+                setLastRefundInfo(info);
+                setTableRefreshKey((prev) => prev + 1);
+              }}
             />
           </>
         )}

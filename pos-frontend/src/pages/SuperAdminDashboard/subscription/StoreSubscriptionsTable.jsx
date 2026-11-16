@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  getAllSubscriptions,
+  getAllSubscriptionsPaged,
   getExpiringSubscriptions,
   activateSubscription,
   cancelSubscription,
 } from "@/Redux Toolkit/features/subscription/subscriptionThunks";
+import DataTablePagination from "@/components/ui/data-table-pagination";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -21,22 +23,61 @@ import { toast } from "@/components/ui/use-toast";
 
 export default function StoreSubscriptionsTable() {
   const dispatch = useDispatch();
-  const { subscriptions = [], expiringSubscriptions = [], loading } =
-    useSelector((state) => state.subscription);
+  const {
+    pagedAdminSubscriptions,
+    pagedAdminLoading: loading,
+    expiringSubscriptions = [],
+  } = useSelector((state) => state.subscription);
+  const displayedList = pagedAdminSubscriptions?.content || [];
   const [statusFilter, setStatusFilter] = useState("");
   const [showExpiringOnly, setShowExpiringOnly] = useState(false);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  const fetchSubscriptions = useCallback(() => {
+    dispatch(
+      getAllSubscriptionsPaged({
+        ...(showExpiringOnly
+          ? { expiringDays: 7 }
+          : statusFilter
+            ? { status: statusFilter }
+            : {}),
+        page,
+        size: pageSize,
+        sortBy: "createdAt",
+        sortDir: "desc",
+      }),
+    );
+  }, [dispatch, showExpiringOnly, statusFilter, page, pageSize]);
 
   useEffect(() => {
-    dispatch(getAllSubscriptions(statusFilter || undefined));
-    dispatch(getExpiringSubscriptions(7));
-  }, [dispatch, statusFilter]);
+    fetchSubscriptions();
+  }, [fetchSubscriptions]);
 
-  const displayedList = showExpiringOnly ? expiringSubscriptions : subscriptions;
+  useEffect(() => {
+    dispatch(getExpiringSubscriptions(7));
+  }, [dispatch]);
+
+  const handlePageSizeChange = (newSize) => {
+    setPageSize(newSize);
+    setPage(0);
+  };
 
   const handleActivate = async (subId) => {
     try {
       await dispatch(activateSubscription(subId)).unwrap();
       toast({ title: "Đã kích hoạt", description: `Thuê bao #${subId} đã chuyển sang ACTIVE.` });
+      if (
+        displayedList.length === 1 &&
+        page > 0 &&
+        statusFilter &&
+        statusFilter !== "ACTIVE"
+      ) {
+        setPage((prev) => Math.max(0, prev - 1));
+      } else {
+        fetchSubscriptions();
+      }
+      dispatch(getExpiringSubscriptions(7));
     } catch (err) {
       toast({ title: "Lỗi", description: String(err), variant: "destructive" });
     }
@@ -47,6 +88,16 @@ export default function StoreSubscriptionsTable() {
     try {
       await dispatch(cancelSubscription(subId)).unwrap();
       toast({ title: "Đã hủy", description: `Thuê bao #${subId} đã chuyển sang CANCELLED.` });
+      if (
+        displayedList.length === 1 &&
+        page > 0 &&
+        (showExpiringOnly || statusFilter === "ACTIVE" || statusFilter === "TRIAL")
+      ) {
+        setPage((prev) => Math.max(0, prev - 1));
+      } else {
+        fetchSubscriptions();
+      }
+      dispatch(getExpiringSubscriptions(7));
     } catch (err) {
       toast({ title: "Lỗi", description: String(err), variant: "destructive" });
     }
@@ -65,7 +116,10 @@ export default function StoreSubscriptionsTable() {
           <Button
             variant={showExpiringOnly ? "default" : "outline"}
             size="sm"
-            onClick={() => setShowExpiringOnly(!showExpiringOnly)}
+            onClick={() => {
+              setShowExpiringOnly((prev) => !prev);
+              setPage(0);
+            }}
           >
             <Clock className="w-4 h-4 mr-1 text-amber-500" />
             Sắp hết hạn 7 ngày ({expiringSubscriptions.length})
@@ -75,6 +129,7 @@ export default function StoreSubscriptionsTable() {
             onChange={(e) => {
               setShowExpiringOnly(false);
               setStatusFilter(e.target.value);
+              setPage(0);
             }}
             className="h-9 rounded-md border bg-background px-3 text-sm"
           >
@@ -88,7 +143,10 @@ export default function StoreSubscriptionsTable() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => dispatch(getAllSubscriptions(statusFilter || undefined))}
+            onClick={() => {
+              fetchSubscriptions();
+              dispatch(getExpiringSubscriptions(7));
+            }}
           >
             <RefreshCw className="w-4 h-4" />
           </Button>
@@ -178,6 +236,18 @@ export default function StoreSubscriptionsTable() {
           </TableBody>
         </Table>
       </div>
+
+      <DataTablePagination
+        page={pagedAdminSubscriptions?.pageNumber ?? page}
+        pageSize={pagedAdminSubscriptions?.pageSize ?? pageSize}
+        totalElements={pagedAdminSubscriptions?.totalElements ?? 0}
+        totalPages={pagedAdminSubscriptions?.totalPages ?? 0}
+        currentCount={displayedList.length}
+        onPageChange={setPage}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+        itemLabel="thuê bao"
+      />
     </div>
   );
 }

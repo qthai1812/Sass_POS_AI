@@ -29,6 +29,8 @@ public class OrderDTO {
 
     private Double totalAmount;
 
+    private Double refundedAmount;
+
     private String note;
 
     private LocalDateTime createdAt;

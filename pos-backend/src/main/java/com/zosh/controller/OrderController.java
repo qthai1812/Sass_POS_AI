@@ -4,12 +4,15 @@ import com.zosh.domain.OrderStatus;
 import com.zosh.domain.PaymentType;
 import com.zosh.payload.dto.OrderDTO;
 import com.zosh.payload.response.ApiResponse;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.service.OrderService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -72,10 +75,46 @@ public class OrderController {
     }
 
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/branch/{branchId}/paged")
+    public ResponseEntity<PageResponse<OrderDTO>> getOrderByBranchPaged(
+            @PathVariable Long branchId,
+            @RequestParam(required = false) Long customerId,
+            @RequestParam(required = false) Long cashierId,
+            @RequestParam(required = false) PaymentType paymentType,
+            @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) OrderStatus orderStatus,
+            @RequestParam(required = false, defaultValue = "") String keyword,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir) throws Exception {
+        OrderStatus effectiveStatus = status != null ? status : orderStatus;
+        return ResponseEntity.ok(orderService.getOrdersByBranchPaged(
+                branchId, customerId, cashierId, paymentType, effectiveStatus, keyword, page, size, sortBy, sortDir
+        ));
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
     @GetMapping("/cashier/{id}")
     public ResponseEntity<List<OrderDTO>> getOrderByCashier(
             @PathVariable Long id) throws Exception {
         return ResponseEntity.ok(orderService.getOrderByCashier(id));
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/cashier/{id}/paged")
+    public ResponseEntity<PageResponse<OrderDTO>> getOrderByCashierPaged(
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "") String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir) throws Exception {
+        return ResponseEntity.ok(orderService.getOrdersByCashierPaged(
+                id, keyword, startDate, endDate, page, size, sortBy, sortDir
+        ));
     }
 
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")

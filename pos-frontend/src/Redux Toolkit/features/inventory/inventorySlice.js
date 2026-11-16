@@ -5,14 +5,27 @@ import {
   deleteInventory,
   getInventoryById,
   getInventoryByBranch,
+  getInventoryByBranchPaged,
+  getInventorySummaryByBranch,
   getInventoryByProduct,
   transferInventory,
 } from "./inventoryThunks";
 import { createOrder } from "../order/orderThunks";
 import { createRefund } from "../refund/refundThunks";
+import { normalizePageResponse } from "@/utils/paginationUtils";
+
+const createEmptyInventoryPage = () => normalizePageResponse(null);
 
 const initialState = {
   inventories: [],
+  pagedInventories: createEmptyInventoryPage(),
+  pagedLoading: false,
+  inventorySummary: {
+    totalItems: 0,
+    totalQuantity: 0,
+    lowStockCount: 0,
+    outOfStockCount: 0,
+  },
   inventory: null,
   loading: false,
   error: null,
@@ -24,6 +37,13 @@ const inventorySlice = createSlice({
   reducers: {
     clearInventoryState: (state) => {
       state.inventories = [];
+      state.pagedInventories = createEmptyInventoryPage();
+      state.inventorySummary = {
+        totalItems: 0,
+        totalQuantity: 0,
+        lowStockCount: 0,
+        outOfStockCount: 0,
+      };
       state.inventory = null;
       state.error = null;
     },
@@ -54,10 +74,19 @@ const inventorySlice = createSlice({
           (inv) => inv.id === action.payload.id,
         );
         if (index !== -1) state.inventories[index] = action.payload;
+        const pagedIdx = state.pagedInventories.content.findIndex(
+          (inv) => inv.id === action.payload.id,
+        );
+        if (pagedIdx !== -1) {
+          state.pagedInventories.content[pagedIdx] = action.payload;
+        }
       })
 
       .addCase(deleteInventory.fulfilled, (state, action) => {
         state.inventories = state.inventories.filter(
+          (inv) => inv.id !== action.payload,
+        );
+        state.pagedInventories.content = state.pagedInventories.content.filter(
           (inv) => inv.id !== action.payload,
         );
       })
@@ -68,6 +97,30 @@ const inventorySlice = createSlice({
 
       .addCase(getInventoryByBranch.fulfilled, (state, action) => {
         state.inventories = action.payload;
+      })
+
+      .addCase(getInventoryByBranchPaged.pending, (state) => {
+        state.pagedLoading = true;
+        state.error = null;
+      })
+      .addCase(getInventoryByBranchPaged.fulfilled, (state, action) => {
+        state.pagedLoading = false;
+        state.pagedInventories = normalizePageResponse(action.payload);
+      })
+      .addCase(getInventoryByBranchPaged.rejected, (state, action) => {
+        state.pagedLoading = false;
+        state.error = action.payload;
+      })
+
+      .addCase(getInventorySummaryByBranch.fulfilled, (state, action) => {
+        if (action.payload) {
+          state.inventorySummary = {
+            totalItems: Number(action.payload.totalItems || 0),
+            totalQuantity: Number(action.payload.totalQuantity || 0),
+            lowStockCount: Number(action.payload.lowStockCount || 0),
+            outOfStockCount: Number(action.payload.outOfStockCount || 0),
+          };
+        }
       })
 
       .addCase(getInventoryByProduct.fulfilled, (state, action) => {

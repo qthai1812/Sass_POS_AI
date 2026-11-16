@@ -2,6 +2,9 @@ package com.zosh.repository;
 
 import com.zosh.modal.Inventory;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -27,6 +30,48 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     List<Inventory> findByBranchId(Long branchId);
 
     List<Inventory> findByProductId(Long productId);
+
+    @EntityGraph(attributePaths = {"branch", "product", "product.category", "product.store"})
+    @Query("""
+            SELECT i FROM Inventory i
+            JOIN i.product p
+            LEFT JOIN p.category c
+            WHERE i.branch.id = :branchId
+              AND (:category IS NULL OR :category = '' OR LOWER(COALESCE(c.name, 'Chưa phân loại')) = LOWER(:category))
+              AND (
+                  :keyword IS NULL OR :keyword = ''
+                  OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                  OR LOWER(COALESCE(p.sku, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+              )
+            """)
+    Page<Inventory> findByBranchPaged(
+            @Param("branchId") Long branchId,
+            @Param("keyword") String keyword,
+            @Param("category") String category,
+            Pageable pageable
+    );
+
+    @Query("""
+            SELECT COUNT(i),
+                   COALESCE(SUM(i.quantity), 0),
+                   COALESCE(SUM(CASE WHEN i.quantity > 0 AND i.quantity <= COALESCE(i.minStockLevel, 10) THEN 1 ELSE 0 END), 0),
+                   COALESCE(SUM(CASE WHEN i.quantity <= 0 THEN 1 ELSE 0 END), 0)
+            FROM Inventory i
+            JOIN i.product p
+            LEFT JOIN p.category c
+            WHERE i.branch.id = :branchId
+              AND (:category IS NULL OR :category = '' OR LOWER(COALESCE(c.name, 'Chưa phân loại')) = LOWER(:category))
+              AND (
+                  :keyword IS NULL OR :keyword = ''
+                  OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                  OR LOWER(COALESCE(p.sku, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+              )
+            """)
+    List<Object[]> summarizeBranchInventory(
+            @Param("branchId") Long branchId,
+            @Param("keyword") String keyword,
+            @Param("category") String category
+    );
 
     /**
      * Pessimistic write lock (SELECT ... FOR UPDATE) — chống race condition.

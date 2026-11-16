@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   Table,
@@ -43,10 +43,12 @@ import {
 } from "../../../components/ui/dropdown-menu";
 import StoreStatusBadge from "./StoreStatusBadge";
 import {
-  getAllStores,
+  getAllStoresPaged,
   moderateStore,
   deleteStore,
 } from "../../../Redux Toolkit/features/store/storeThunks";
+import DataTablePagination from "@/components/ui/data-table-pagination";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 import { formatDateTime } from "../../../utils/formateDate";
 import { toast as sonnerToast } from "sonner";
 
@@ -56,31 +58,56 @@ export default function StoreTable({
   onActivateStore,
 }) {
   const dispatch = useDispatch();
-  const { stores = [], loading, error } = useSelector((state) => state.store);
+  const { pagedStores, pagedLoading: loading, error } = useSelector(
+    (state) => state.store
+  );
+  const stores = pagedStores?.content || [];
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [updatingId, setUpdatingId] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
 
   useEffect(() => {
-    dispatch(
-      getAllStores(
-        statusFilter === "all" ? undefined : statusFilter.toUpperCase()
-      )
-    );
-  }, [dispatch, statusFilter]);
+    const next = searchTerm.trim();
+    if (next === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setPage(0);
+      setDebouncedSearch(next);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearch]);
 
-  const filteredStores = (stores || []).filter((store) => {
-    const query = searchTerm.toLowerCase();
-    return (
-      (store.brand?.toLowerCase() || "").includes(query) ||
-      (store.storeAdmin?.fullName?.toLowerCase() || "").includes(query) ||
-      (store.contact?.email?.toLowerCase() || "").includes(query) ||
-      (store.contact?.phone || "").includes(query)
+  const fetchPagedStores = useCallback(() => {
+    dispatch(
+      getAllStoresPaged({
+        status: statusFilter === "all" ? undefined : statusFilter.toUpperCase(),
+        keyword: debouncedSearch,
+        page,
+        size: pageSize,
+        sortBy: "createdAt",
+        sortDir: "desc",
+      })
     );
-  });
+  }, [dispatch, statusFilter, debouncedSearch, page, pageSize]);
+
+  useEffect(() => {
+    fetchPagedStores();
+  }, [fetchPagedStores]);
+
+  const handleStatusFilterChange = (nextStatus) => {
+    setStatusFilter(nextStatus);
+    setPage(0);
+  };
+
+  const handlePageSizeChange = (nextSize) => {
+    setPageSize(nextSize);
+    setPage(0);
+  };
 
   const handleStatusChange = async (store, newStatus, reason = undefined) => {
     if (newStatus === "REJECTED" && !reason) {
@@ -98,6 +125,11 @@ export default function StoreTable({
       sonnerToast.success(
         `Đã cập nhật trạng thái "${brandName}" sang ${newStatus}.`
       );
+      if (statusFilter !== "all" && stores.length === 1 && page > 0) {
+        setPage((prev) => Math.max(0, prev - 1));
+      } else {
+        fetchPagedStores();
+      }
     } catch (err) {
       sonnerToast.error(
         typeof err === "string" ? err : "Failed to update store status"
@@ -127,6 +159,11 @@ export default function StoreTable({
     try {
       await dispatch(deleteStore(store.id)).unwrap();
       sonnerToast.success(`Đã xóa cửa hàng "${store.brand}" thành công.`);
+      if (stores.length === 1 && page > 0) {
+        setPage((prev) => Math.max(0, prev - 1));
+      } else {
+        fetchPagedStores();
+      }
     } catch (err) {
       sonnerToast.error(
         typeof err === "string" ? err : "Không thể xóa cửa hàng"
@@ -147,7 +184,7 @@ export default function StoreTable({
             className="max-w-sm"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
@@ -181,7 +218,14 @@ export default function StoreTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredStores.map((store) => {
+              {stores.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    No stores found matching your criteria.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                stores.map((store) => {
                 const upperStatus = store.status?.toUpperCase();
                 return (
                   <TableRow key={store.id}>
@@ -263,10 +307,22 @@ export default function StoreTable({
                     </TableCell>
                   </TableRow>
                 );
-              })}
+              })
+              )}
             </TableBody>
           </Table>
         )}
+        <DataTablePagination
+          page={pagedStores?.pageNumber ?? page}
+          pageSize={pagedStores?.pageSize ?? pageSize}
+          totalElements={pagedStores?.totalElements ?? 0}
+          totalPages={pagedStores?.totalPages ?? 0}
+          currentCount={stores.length}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+          loading={loading}
+          itemLabel="stores"
+        />
       </div>
 
       <Dialog

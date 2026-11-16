@@ -5,6 +5,8 @@ import com.zosh.exceptions.UserException;
 import com.zosh.modal.Store;
 import com.zosh.modal.User;
 import com.zosh.payload.dto.StoreDTO;
+import com.zosh.payload.dto.StoreSummaryDTO;
+import com.zosh.payload.response.PageResponse;
 
 import java.util.List;
 
@@ -13,6 +15,8 @@ public interface StoreService {
     StoreDTO createStore(StoreDTO storeDTO, User user);
     StoreDTO getStoreById(Long id) throws Exception;
     List<StoreDTO> getAllStores(StoreStatus status);
+    PageResponse<StoreDTO> getAllStoresPaged(StoreStatus status, String keyword, int page, int size, String sortBy, String sortDir) throws Exception;
+    StoreSummaryDTO getStoreSummary() throws Exception;
     Store getStoreByAdmin() throws UserException;
     StoreDTO getStoreDtoByAdmin() throws UserException;
     StoreDTO updateStore(Long id, StoreDTO storeDTO) throws Exception;

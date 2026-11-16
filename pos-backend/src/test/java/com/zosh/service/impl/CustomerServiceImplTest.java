@@ -6,6 +6,9 @@ import com.zosh.modal.Customer;
 import com.zosh.modal.Order;
 import com.zosh.modal.Store;
 import com.zosh.modal.User;
+import com.zosh.payload.dto.CustomerDTO;
+import com.zosh.payload.dto.CustomerSummaryDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.CustomerRepository;
 import com.zosh.repository.OrderRepository;
 import com.zosh.repository.StoreRepository;
@@ -13,9 +16,14 @@ import com.zosh.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.util.Collections;
@@ -164,5 +172,60 @@ class CustomerServiceImplTest {
         customerService.deleteCustomer(100L);
 
         verify(customerRepository).delete(customer);
+    }
+
+    @Test
+    void getCustomersPaged_withoutKeyword_clampsPageAndSizeAndMapsDto() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(owner);
+        Page<Customer> repoPage = new PageImpl<>(List.of(customer), PageRequest.of(0, 100), 1);
+        when(customerRepository.findByStoreId(eq(1L), any(Pageable.class))).thenReturn(repoPage);
+
+        PageResponse<CustomerDTO> res = customerService.getCustomersPaged("   ", -2, 500, "invalidField", "asc");
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(customerRepository).findByStoreId(eq(1L), pageableCaptor.capture());
+        Pageable captured = pageableCaptor.getValue();
+        assertEquals(0, captured.getPageNumber());
+        assertEquals(100, captured.getPageSize());
+        assertNotNull(captured.getSort().getOrderFor("createdAt"));
+
+        assertEquals(1, res.getContent().size());
+        assertEquals("Nguyen Van A", res.getContent().get(0).getFullName());
+        assertEquals(1L, res.getContent().get(0).getStoreId());
+        assertEquals(1L, res.getTotalElements());
+    }
+
+    @Test
+    void getCustomersPaged_withKeyword_callsSearchQuery() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(manager);
+        Page<Customer> repoPage = new PageImpl<>(List.of(customer), PageRequest.of(0, 10), 1);
+        when(customerRepository.searchCustomersByStore(eq(1L), eq("0901"), any(Pageable.class))).thenReturn(repoPage);
+
+        PageResponse<CustomerDTO> res = customerService.getCustomersPaged(" 0901 ", 0, 10, "fullName", "desc");
+
+        verify(customerRepository).searchCustomersByStore(eq(1L), eq("0901"), any(Pageable.class));
+        assertEquals(1, res.getContent().size());
+        assertEquals("0901234567", res.getContent().get(0).getPhone());
+    }
+
+    @Test
+    void getCustomersPaged_bySuperAdmin_throwsAccessDenied() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(superAdmin);
+        assertThrows(AccessDeniedException.class,
+                () -> customerService.getCustomersPaged("", 0, 10, "createdAt", "desc"));
+    }
+
+    @Test
+    void getCustomerSummary_returnsAggregatedMetrics() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(cashier);
+        when(customerRepository.countByStoreId(1L)).thenReturn(42L);
+        when(customerRepository.countByStoreIdAndLoyaltyPointsGreaterThanEqual(1L, 100)).thenReturn(7L);
+        when(customerRepository.sumLoyaltyPointsByStoreId(1L)).thenReturn(1580L);
+
+        CustomerSummaryDTO summary = customerService.getCustomerSummary();
+
+        assertEquals(42L, summary.getTotalCustomers());
+        assertEquals(7L, summary.getGoldAndDiamondCount());
+        assertEquals(1580L, summary.getTotalLoyaltyPoints());
     }
 }

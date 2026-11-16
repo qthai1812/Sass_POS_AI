@@ -4,17 +4,23 @@ import {
   getAllRefunds,
   getRefundsByCashier,
   getRefundsByBranch,
+  getRefundsByBranchPaged,
   getRefundsByOrder,
   getRefundsByShift,
   getRefundsByCashierAndDateRange,
   getRefundById,
   deleteRefund
 } from './refundThunks';
+import { normalizePageResponse } from '@/utils/paginationUtils';
+
+const createEmptyRefundPage = () => normalizePageResponse(null);
 
 const initialState = {
   refunds: [],
   refundsByCashier: [],
   refundsByBranch: [],
+  pagedBranchRefunds: createEmptyRefundPage(),
+  pagedBranchLoading: false,
   refundsByOrder: [],
   refundsByOrderId: null,
   refundsByShift: [],
@@ -43,6 +49,7 @@ const refundSlice = createSlice({
       state.refunds = [];
       state.refundsByCashier = [];
       state.refundsByBranch = [];
+      state.pagedBranchRefunds = createEmptyRefundPage();
       state.refundsByOrder = [];
       state.refundsByOrderId = null;
       state.refundsByShift = [];
@@ -142,6 +149,20 @@ const refundSlice = createSlice({
         state.error = action.payload;
       })
 
+      // Get Refunds by Branch Paged
+      .addCase(getRefundsByBranchPaged.pending, (state) => {
+        state.pagedBranchLoading = true;
+        state.error = null;
+      })
+      .addCase(getRefundsByBranchPaged.fulfilled, (state, action) => {
+        state.pagedBranchLoading = false;
+        state.pagedBranchRefunds = normalizePageResponse(action.payload);
+      })
+      .addCase(getRefundsByBranchPaged.rejected, (state, action) => {
+        state.pagedBranchLoading = false;
+        state.error = action.payload;
+      })
+
       // Get Refunds by Order
       .addCase(getRefundsByOrder.pending, (state) => {
         state.error = null;
@@ -208,6 +229,7 @@ const refundSlice = createSlice({
         state.refunds = (state.refunds || []).filter(keepNotDeleted);
         state.refundsByCashier = (state.refundsByCashier || []).filter(keepNotDeleted);
         state.refundsByBranch = (state.refundsByBranch || []).filter(keepNotDeleted);
+        state.pagedBranchRefunds.content = (state.pagedBranchRefunds.content || []).filter(keepNotDeleted);
         state.refundsByOrder = (state.refundsByOrder || []).filter(keepNotDeleted);
         state.refundsByShift = (state.refundsByShift || []).filter(keepNotDeleted);
         state.refundsByDateRange = (state.refundsByDateRange || []).filter(keepNotDeleted);

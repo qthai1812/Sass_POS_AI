@@ -1,7 +1,9 @@
 package com.zosh.controller;
 
 import com.zosh.payload.dto.InventoryDTO;
+import com.zosh.payload.dto.InventorySummaryDTO;
 import com.zosh.payload.response.ApiResponse;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.service.InventoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -78,6 +80,32 @@ public class InventoryController {
             @PathVariable Long branchId
     ) throws Exception {
         return ResponseEntity.ok(inventoryService.getAllInventoryByBranchId(branchId));
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/branch/{branchId}/paged")
+    public ResponseEntity<PageResponse<InventoryDTO>> getInventoryByBranchPaged(
+            @PathVariable Long branchId,
+            @RequestParam(required = false, defaultValue = "") String keyword,
+            @RequestParam(required = false, defaultValue = "all") String category,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "lastUpdate") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir
+    ) {
+        return ResponseEntity.ok(inventoryService.getInventoryByBranchPaged(
+                branchId, keyword, category, page, size, sortBy, sortDir
+        ));
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/branch/{branchId}/summary")
+    public ResponseEntity<InventorySummaryDTO> getInventorySummaryByBranch(
+            @PathVariable Long branchId,
+            @RequestParam(required = false, defaultValue = "") String keyword,
+            @RequestParam(required = false, defaultValue = "all") String category
+    ) {
+        return ResponseEntity.ok(inventoryService.getInventorySummaryByBranch(branchId, keyword, category));
     }
 
     @PreAuthorize("hasRole('STORE_OWNER')")

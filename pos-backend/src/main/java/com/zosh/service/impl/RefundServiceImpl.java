@@ -7,6 +7,8 @@ import com.zosh.mapper.RefundMapper;
 import com.zosh.modal.*;
 import com.zosh.payload.dto.RefundDTO;
 import com.zosh.payload.dto.RefundItemDTO;
+import com.zosh.payload.response.PageResponse;
+import com.zosh.repository.BranchRepository;
 import com.zosh.repository.OrderRepository;
 import com.zosh.repository.RefundRepository;
 import com.zosh.repository.ShiftReportRepository;
@@ -16,14 +18,18 @@ import com.zosh.service.UserService;
 import com.zosh.service.order.CustomerLoyaltyService;
 import com.zosh.service.order.OrderInventoryCoordinator;
 import com.zosh.service.order.ReturnedQuantityCalculator;
+import com.zosh.util.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -33,8 +39,12 @@ public class RefundServiceImpl implements RefundService {
 
     private static final double AMOUNT_TOLERANCE = 0.01;
     private static final double ROUNDING_TOLERANCE = 10.0;
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "amount", "createdAt", "paymentType"
+    );
 
     private final UserService userService;
+    private final BranchRepository branchRepository;
     private final OrderRepository orderRepository;
     private final RefundRepository refundRepository;
     private final ShiftReportRepository shiftReportRepository;
@@ -446,6 +456,31 @@ public class RefundServiceImpl implements RefundService {
         return refundRepository.findByBranchId(branchId).stream()
                 .filter(r -> accessControl.canAccessBranch(current, r.getBranch()))
                 .map(RefundMapper::toDTO).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<RefundDTO> getRefundsByBranchPaged(Long branchId, int page, int size, String sortBy, String sortDir) throws Exception {
+        Branch branch = branchRepository.findById(branchId)
+                .orElseThrow(() -> new Exception("Branch not found with id: " + branchId));
+        accessControl.assertCanAccessBranch(userService.getCurrentUser(), branch);
+
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_SORT_FIELDS, "createdAt"
+        );
+        Page<Long> idPage = refundRepository.findBranchRefundIdsPaged(branchId, pageable);
+        List<Long> ids = idPage.getContent();
+        if (ids.isEmpty()) {
+            return PageResponse.of(idPage, Collections.emptyList());
+        }
+        Map<Long, Refund> refundById = refundRepository.findAllWithDetailsByIdIn(ids).stream()
+                .collect(Collectors.toMap(Refund::getId, Function.identity(), (a, b) -> a));
+        List<RefundDTO> content = ids.stream()
+                .map(refundById::get)
+                .filter(Objects::nonNull)
+                .map(RefundMapper::toDTO)
+                .collect(Collectors.toList());
+        return PageResponse.of(idPage, content);
     }
 
     @Override

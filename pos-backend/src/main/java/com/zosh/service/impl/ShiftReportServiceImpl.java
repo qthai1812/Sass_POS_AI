@@ -6,13 +6,17 @@ import com.zosh.mapper.RefundMapper;
 import com.zosh.mapper.ShiftReportMapper;
 import com.zosh.modal.*;
 import com.zosh.payload.dto.ShiftReportDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.*;
 import com.zosh.service.AccessControlService;
 import com.zosh.service.ShiftReportService;
 import com.zosh.service.UserService;
 import com.zosh.service.shift.ShiftMetricsCalculator;
 import com.zosh.service.shift.ShiftMetricsCalculator.ShiftMetrics;
+import com.zosh.util.PaginationUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,12 +25,20 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class ShiftReportServiceImpl implements ShiftReportService {
+
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "shiftStart", "shiftEnd", "totalSales", "totalRefunds", "netSale", "totalOrders"
+    );
 
     private final ShiftReportRepository shiftReportRepository;
     private final UserService userService;
@@ -90,6 +102,37 @@ public class ShiftReportServiceImpl implements ShiftReportService {
 
     @Override
     @Transactional(readOnly = true)
+    public PageResponse<ShiftReportDTO> getAllShiftReportsPaged(int page, int size, String sortBy, String sortDir) {
+        User current = resolveCurrentUserOrThrowAccessDenied();
+        if (current.getRole() == UserRole.ROLE_SUPER_ADMIN) {
+            throw new AccessDeniedException("Super Admin không truy cập báo cáo ca làm việc nội bộ của cửa hàng.");
+        }
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_SORT_FIELDS, "shiftStart"
+        );
+        int safeSize = PaginationUtils.normalizeSize(size);
+        Page<Long> idPage;
+        if (current.getRole() == UserRole.ROLE_CASHIER) {
+            idPage = shiftReportRepository.findShiftIdsByCashierPaged(current.getId(), pageable);
+        } else if (current.getRole() == UserRole.ROLE_BRANCH_MANAGER) {
+            if (current.getBranch() == null) {
+                return PageResponse.empty(page, safeSize);
+            }
+            idPage = shiftReportRepository.findShiftIdsByBranchPaged(current.getBranch().getId(), pageable);
+        } else if (current.getRole() == UserRole.ROLE_STORE_OWNER) {
+            Store store = accessControl.resolveStoreOfUser(current);
+            if (store == null) {
+                return PageResponse.empty(page, safeSize);
+            }
+            idPage = shiftReportRepository.findShiftIdsByStorePaged(store.getId(), pageable);
+        } else {
+            return PageResponse.empty(page, safeSize);
+        }
+        return hydratePagedShiftReports(idPage);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<ShiftReportDTO> getShiftReportsByBranchId(Long branchId) {
         User current = resolveCurrentUserOrThrowAccessDenied();
         return mapVisibleReports(current, shiftReportRepository.findByBranchId(branchId));
@@ -97,9 +140,74 @@ public class ShiftReportServiceImpl implements ShiftReportService {
 
     @Override
     @Transactional(readOnly = true)
+    public PageResponse<ShiftReportDTO> getShiftReportsByBranchIdPaged(
+            Long branchId, int page, int size, String sortBy, String sortDir
+    ) throws Exception {
+        User current = resolveCurrentUserOrThrowAccessDenied();
+        if (current.getRole() == UserRole.ROLE_SUPER_ADMIN) {
+            throw new AccessDeniedException("Super Admin không truy cập báo cáo ca làm việc nội bộ của cửa hàng.");
+        }
+        Branch branch = branchRepository.findById(branchId)
+                .orElseThrow(() -> new Exception("Branch not found with id: " + branchId));
+        accessControl.assertCanAccessBranch(current, branch);
+
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_SORT_FIELDS, "shiftStart"
+        );
+        Page<Long> idPage = current.getRole() == UserRole.ROLE_CASHIER
+                ? shiftReportRepository.findShiftIdsByBranchAndCashierPaged(branchId, current.getId(), pageable)
+                : shiftReportRepository.findShiftIdsByBranchPaged(branchId, pageable);
+        return hydratePagedShiftReports(idPage);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<ShiftReportDTO> getShiftReportsByCashierId(Long cashierId) {
         User current = resolveCurrentUserOrThrowAccessDenied();
         return mapVisibleReports(current, shiftReportRepository.findByCashierId(cashierId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<ShiftReportDTO> getShiftReportsByCashierIdPaged(
+            Long cashierId, int page, int size, String sortBy, String sortDir
+    ) throws Exception {
+        User current = resolveCurrentUserOrThrowAccessDenied();
+        if (current.getRole() == UserRole.ROLE_SUPER_ADMIN) {
+            throw new AccessDeniedException("Super Admin không truy cập báo cáo ca làm việc nội bộ của cửa hàng.");
+        }
+        if (!current.getId().equals(cashierId)) {
+            if (current.getRole() == UserRole.ROLE_CASHIER) {
+                throw new AccessDeniedException("Thu ngân chỉ được xem lịch sử ca của chính mình.");
+            }
+            User target = userRepository.findById(cashierId)
+                    .orElseThrow(() -> new Exception("Cashier not found with id: " + cashierId));
+            if (target.getBranch() != null) {
+                accessControl.assertCanManageBranch(current, target.getBranch());
+            } else if (!accessControl.isStoreLevelUser(current, target.getStore())) {
+                throw new AccessDeniedException("You do not have permission to view shift reports of this cashier");
+            }
+        }
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, sortDir, ALLOWED_SORT_FIELDS, "shiftStart"
+        );
+        Page<Long> idPage = shiftReportRepository.findShiftIdsByCashierPaged(cashierId, pageable);
+        return hydratePagedShiftReports(idPage);
+    }
+
+    private PageResponse<ShiftReportDTO> hydratePagedShiftReports(Page<Long> idPage) {
+        List<Long> ids = idPage.getContent();
+        if (ids.isEmpty()) {
+            return PageResponse.of(idPage, Collections.emptyList());
+        }
+        Map<Long, ShiftReport> reportById = shiftReportRepository.findAllWithDetailsByIdIn(ids).stream()
+                .collect(Collectors.toMap(ShiftReport::getId, Function.identity(), (a, b) -> a));
+        List<ShiftReportDTO> content = ids.stream()
+                .map(reportById::get)
+                .filter(Objects::nonNull)
+                .map(this::toSummaryOrLiveDTO)
+                .collect(Collectors.toList());
+        return PageResponse.of(idPage, content);
     }
 
     @Override

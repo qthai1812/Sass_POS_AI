@@ -4,7 +4,9 @@ import com.zosh.domain.StoreStatus;
 import com.zosh.exceptions.UserException;
 import com.zosh.modal.User;
 import com.zosh.payload.dto.StoreDTO;
+import com.zosh.payload.dto.StoreSummaryDTO;
 import com.zosh.payload.response.ApiResponse;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.service.StoreService;
 import com.zosh.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +43,25 @@ public class StoreController {
             @RequestParam(required = false) StoreStatus status
     ) throws Exception {
         return ResponseEntity.ok(storeService.getAllStores(status));
+    }
+
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @GetMapping("/paged")
+    public ResponseEntity<PageResponse<StoreDTO>> getAllStorePaged(
+            @RequestParam(required = false) StoreStatus status,
+            @RequestParam(required = false, defaultValue = "") String keyword,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir
+    ) throws Exception {
+        return ResponseEntity.ok(storeService.getAllStoresPaged(status, keyword, page, size, sortBy, sortDir));
+    }
+
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @GetMapping("/summary")
+    public ResponseEntity<StoreSummaryDTO> getStoreSummary() throws Exception {
+        return ResponseEntity.ok(storeService.getStoreSummary());
     }
 
     @PreAuthorize("hasRole('STORE_OWNER')")

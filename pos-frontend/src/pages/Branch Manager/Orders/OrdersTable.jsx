@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, FileText, ArrowUpDown } from "lucide-react";
+import { Search, FileText, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import OrderActionButtons from "@/components/OrderActionButtons";
 
 const OrdersTable = ({
@@ -19,33 +19,58 @@ const OrdersTable = ({
   onPrintInvoice,
   getStatusColor,
   getPaymentIcon,
+  sortBy,
+  sortDir,
+  onSortChange,
 }) => {
-  const [sortField, setSortField] = useState("id");
-  const [sortAsc, setSortAsc] = useState(false);
+  const [localSortField, setLocalSortField] = useState("id");
+  const [localSortAsc, setLocalSortAsc] = useState(false);
+  const isServerSort = typeof onSortChange === "function";
 
   const handleSort = (field) => {
-    if (sortField === field) {
-      setSortAsc((prev) => !prev);
+    if (isServerSort) {
+      onSortChange(field);
+      return;
+    }
+    if (localSortField === field) {
+      setLocalSortAsc((prev) => !prev);
     } else {
-      setSortField(field);
-      setSortAsc(true);
+      setLocalSortField(field);
+      setLocalSortAsc(true);
     }
   };
 
+  const renderSortIcon = (field) => {
+    if (!isServerSort) {
+      return <ArrowUpDown className="h-3 w-3" />;
+    }
+    if (sortBy !== field) {
+      return <ArrowUpDown className="h-3 w-3 opacity-50" />;
+    }
+    return sortDir === "asc" ? (
+      <ArrowUp className="h-3 w-3 text-primary" />
+    ) : (
+      <ArrowDown className="h-3 w-3 text-primary" />
+    );
+  };
+
   const sortedOrders = useMemo(() => {
+    if (isServerSort) {
+      return orders;
+    }
     return [...orders].sort((a, b) => {
-      let valA = a[sortField];
-      let valB = b[sortField];
-      if (sortField === "createdAt") {
+      let valA = a[localSortField];
+      let valB = b[localSortField];
+      if (localSortField === "createdAt") {
         valA = valA ? new Date(valA).getTime() : 0;
         valB = valB ? new Date(valB).getTime() : 0;
       } else {
         valA = Number(valA) || 0;
         valB = Number(valB) || 0;
       }
-      return sortAsc ? valA - valB : valB - valA;
+      return localSortAsc ? valA - valB : valB - valA;
     });
-  }, [orders, sortField, sortAsc]);
+  }, [orders, isServerSort, localSortField, localSortAsc]);
 
   return (
     <Table>
@@ -58,7 +83,7 @@ const OrdersTable = ({
               className="flex items-center gap-1 font-medium hover:text-foreground"
             >
               Order ID
-              <ArrowUpDown className="h-3 w-3" />
+              {renderSortIcon("id")}
             </button>
           </TableHead>
           <TableHead>Customer</TableHead>
@@ -70,7 +95,7 @@ const OrdersTable = ({
               className="flex items-center gap-1 font-medium hover:text-foreground"
             >
               Date
-              <ArrowUpDown className="h-3 w-3" />
+              {renderSortIcon("createdAt")}
             </button>
           </TableHead>
           <TableHead>
@@ -80,7 +105,7 @@ const OrdersTable = ({
               className="flex items-center gap-1 font-medium hover:text-foreground"
             >
               Amount
-              <ArrowUpDown className="h-3 w-3" />
+              {renderSortIcon("totalAmount")}
             </button>
           </TableHead>
           <TableHead>Payment Mode</TableHead>

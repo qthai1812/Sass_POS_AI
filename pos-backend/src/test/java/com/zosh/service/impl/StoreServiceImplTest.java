@@ -5,6 +5,8 @@ import com.zosh.domain.UserRole;
 import com.zosh.exceptions.UserException;
 import com.zosh.modal.*;
 import com.zosh.payload.dto.StoreDTO;
+import com.zosh.payload.dto.StoreSummaryDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.repository.ShiftReportRepository;
 import com.zosh.repository.StoreRepository;
 import com.zosh.repository.UserRepository;
@@ -18,6 +20,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.util.Collections;
@@ -183,5 +189,54 @@ class StoreServiceImplTest {
         storeService.deleteStore(100L);
 
         verify(cascadeDeletionService).deleteStoreCascade(store);
+    }
+
+    @Test
+    void getAllStoresPaged_bySuperAdmin_returnsEnrichedPage() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(superAdmin);
+        Page<Store> page = new PageImpl<>(List.of(store), PageRequest.of(0, 10), 1);
+        when(storeRepository.findStoresPaged(eq(StoreStatus.PENDING), eq("Zara"), any(Pageable.class)))
+                .thenReturn(page);
+        StoreDTO dto = new StoreDTO();
+        dto.setId(100L);
+        dto.setBrand("Zara VN");
+        when(storeRevenueEnricher.toEnrichedDTOList(List.of(store))).thenReturn(List.of(dto));
+
+        PageResponse<StoreDTO> res = storeService.getAllStoresPaged(
+                StoreStatus.PENDING, " Zara ", 0, 10, "createdAt", "desc"
+        );
+
+        assertEquals(1, res.getContent().size());
+        assertEquals("Zara VN", res.getContent().get(0).getBrand());
+        assertEquals(1L, res.getTotalElements());
+    }
+
+    @Test
+    void getAllStoresPaged_byNonSuperAdmin_throwsAccessDenied() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(owner);
+        assertThrows(AccessDeniedException.class, () ->
+                storeService.getAllStoresPaged(null, "", 0, 10, "createdAt", "desc")
+        );
+    }
+
+    @Test
+    void getStoreSummary_bySuperAdmin_returnsPlatformTotals() throws Exception {
+        when(userService.getCurrentUser()).thenReturn(superAdmin);
+        when(storeRepository.count()).thenReturn(10L);
+        when(storeRepository.countByStatus(StoreStatus.ACTIVE)).thenReturn(6L);
+        when(storeRepository.countByStatus(StoreStatus.PENDING)).thenReturn(2L);
+        when(storeRepository.countByStatus(StoreStatus.BLOCKED)).thenReturn(1L);
+        when(storeRepository.countByStatus(StoreStatus.REJECTED)).thenReturn(1L);
+        when(storeRepository.findAverageCommissionRate()).thenReturn(3.25);
+        List<Object[]> rateRows = Collections.singletonList(new Object[]{100L, 2.5});
+        when(storeRepository.findAllIdAndCommissionRate()).thenReturn(rateRows);
+        when(storeRevenueEnricher.computeTotalPlatformEarnings(rateRows)).thenReturn(500000.0);
+
+        StoreSummaryDTO summary = storeService.getStoreSummary();
+
+        assertEquals(10L, summary.getTotalStores());
+        assertEquals(6L, summary.getActiveStores());
+        assertEquals(3.3, summary.getAverageCommissionRate());
+        assertEquals(500000.0, summary.getTotalEarnings());
     }
 }

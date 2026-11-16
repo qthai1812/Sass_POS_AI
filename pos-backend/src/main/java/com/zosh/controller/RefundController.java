@@ -2,6 +2,7 @@ package com.zosh.controller;
 
 import com.zosh.payload.dto.RefundDTO;
 import com.zosh.payload.response.ApiResponse;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.service.RefundService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +51,18 @@ public class RefundController {
     ) throws Exception {
         List<RefundDTO> refund = refundService.getRefundByBranch(branchId);
         return ResponseEntity.ok(refund);
+    }
+
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")
+    @GetMapping("/branch/{branchId}/paged")
+    public ResponseEntity<PageResponse<RefundDTO>> getRefundByBranchPaged(
+            @PathVariable Long branchId,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir
+    ) throws Exception {
+        return ResponseEntity.ok(refundService.getRefundsByBranchPaged(branchId, page, size, sortBy, sortDir));
     }
 
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'BRANCH_MANAGER', 'CASHIER')")

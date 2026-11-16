@@ -2,6 +2,7 @@ package com.zosh.service;
 
 import com.zosh.modal.Refund;
 import com.zosh.payload.dto.RefundDTO;
+import com.zosh.payload.response.PageResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -16,6 +17,7 @@ public interface RefundService {
                                                    LocalDateTime startDate,
                                                    LocalDateTime endDate) throws Exception;
     List<RefundDTO> getRefundByBranch(Long branchId) throws Exception;
+    PageResponse<RefundDTO> getRefundsByBranchPaged(Long branchId, int page, int size, String sortBy, String sortDir) throws Exception;
     List<RefundDTO> getRefundsByOrderId(Long orderId) throws Exception;
     RefundDTO getRefundById(Long refundId) throws Exception;
     void deleteRefund(Long refundId) throws Exception;

@@ -6,11 +6,24 @@ import {
   getCustomerById,
   getAllCustomers,
   searchCustomers,
+  getCustomersPaged,
+  getCustomerSummary,
 } from "./customerThunks";
 import { createOrder } from "../order/orderThunks";
+import { normalizePageResponse } from "@/utils/paginationUtils";
+
+const createEmptyPage = () => normalizePageResponse(null);
 
 const initialState = {
   customers: [],
+  pagedCustomers: createEmptyPage(),
+  pagedLoading: false,
+  customerSummary: {
+    totalCustomers: 0,
+    goldAndDiamondCount: 0,
+    totalLoyaltyPoints: 0,
+  },
+  summaryLoading: false,
   selectedCustomer: null,
   loading: false,
   error: null,
@@ -22,6 +35,12 @@ const customerSlice = createSlice({
   reducers: {
     clearCustomerState: (state) => {
       state.customers = [];
+      state.pagedCustomers = createEmptyPage();
+      state.customerSummary = {
+        totalCustomers: 0,
+        goldAndDiamondCount: 0,
+        totalLoyaltyPoints: 0,
+      };
       state.selectedCustomer = null;
       state.error = null;
     },
@@ -56,6 +75,12 @@ const customerSlice = createSlice({
         if (index !== -1) {
           state.customers[index] = action.payload;
         }
+        const pagedIdx = state.pagedCustomers.content.findIndex(
+          (customer) => customer.id === action.payload.id,
+        );
+        if (pagedIdx !== -1) {
+          state.pagedCustomers.content[pagedIdx] = action.payload;
+        }
         if (
           state.selectedCustomer &&
           state.selectedCustomer.id === action.payload.id
@@ -77,6 +102,16 @@ const customerSlice = createSlice({
         state.customers = state.customers.filter(
           (customer) => customer.id !== action.payload,
         );
+        const beforeLen = state.pagedCustomers.content.length;
+        state.pagedCustomers.content = state.pagedCustomers.content.filter(
+          (customer) => customer.id !== action.payload,
+        );
+        if (state.pagedCustomers.content.length < beforeLen) {
+          state.pagedCustomers.totalElements = Math.max(
+            0,
+            state.pagedCustomers.totalElements - 1,
+          );
+        }
         if (
           state.selectedCustomer &&
           state.selectedCustomer.id === action.payload
@@ -128,6 +163,37 @@ const customerSlice = createSlice({
         state.error = action.payload;
       })
 
+      // Get Customers Paged
+      .addCase(getCustomersPaged.pending, (state) => {
+        state.pagedLoading = true;
+      })
+      .addCase(getCustomersPaged.fulfilled, (state, action) => {
+        state.pagedLoading = false;
+        state.pagedCustomers = normalizePageResponse(action.payload);
+      })
+      .addCase(getCustomersPaged.rejected, (state, action) => {
+        state.pagedLoading = false;
+        state.error = action.payload;
+      })
+
+      // Get Customer Summary
+      .addCase(getCustomerSummary.pending, (state) => {
+        state.summaryLoading = true;
+      })
+      .addCase(getCustomerSummary.fulfilled, (state, action) => {
+        state.summaryLoading = false;
+        if (action.payload) {
+          state.customerSummary = {
+            totalCustomers: Number(action.payload.totalCustomers || 0),
+            goldAndDiamondCount: Number(action.payload.goldAndDiamondCount || 0),
+            totalLoyaltyPoints: Number(action.payload.totalLoyaltyPoints || 0),
+          };
+        }
+      })
+      .addCase(getCustomerSummary.rejected, (state) => {
+        state.summaryLoading = false;
+      })
+
       // Tự động đồng bộ loyaltyPoints của khách hàng sau khi tạo Order thành công
       .addCase(createOrder.fulfilled, (state, action) => {
         const updatedCustomer = action.payload?.customer;
@@ -137,6 +203,12 @@ const customerSlice = createSlice({
           );
           if (index !== -1) {
             state.customers[index] = updatedCustomer;
+          }
+          const pagedIdx = state.pagedCustomers.content.findIndex(
+            (c) => c.id === updatedCustomer.id,
+          );
+          if (pagedIdx !== -1) {
+            state.pagedCustomers.content[pagedIdx] = updatedCustomer;
           }
           if (
             state.selectedCustomer &&

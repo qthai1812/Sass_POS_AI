@@ -1,6 +1,9 @@
 package com.zosh.controller;
 
+import com.zosh.domain.BranchTransferRequestStatus;
 import com.zosh.payload.dto.BranchTransferRequestDTO;
+import com.zosh.payload.dto.BranchTransferSummaryDTO;
+import com.zosh.payload.response.PageResponse;
 import com.zosh.service.BranchTransferRequestService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -49,6 +52,29 @@ public class BranchTransferRequestController {
             @PathVariable Long storeId
     ) throws Exception {
         return ResponseEntity.ok(transferRequestService.getStoreRequests(storeId));
+    }
+
+    @PreAuthorize("hasRole('STORE_OWNER')")
+    @GetMapping("/store/{storeId}/paged")
+    public ResponseEntity<PageResponse<BranchTransferRequestDTO>> getStoreRequestsPaged(
+            @PathVariable Long storeId,
+            @RequestParam(required = false) BranchTransferRequestStatus status,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir
+    ) throws Exception {
+        return ResponseEntity.ok(transferRequestService.getStoreRequestsPaged(
+                storeId, status, page, size, sortBy, sortDir
+        ));
+    }
+
+    @PreAuthorize("hasRole('STORE_OWNER')")
+    @GetMapping("/store/{storeId}/summary")
+    public ResponseEntity<BranchTransferSummaryDTO> getStoreRequestSummary(
+            @PathVariable Long storeId
+    ) throws Exception {
+        return ResponseEntity.ok(transferRequestService.getStoreRequestSummary(storeId));
     }
 
     @PreAuthorize("hasRole('STORE_OWNER')")

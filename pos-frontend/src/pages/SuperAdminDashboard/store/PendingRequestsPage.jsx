@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,15 +23,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle, XCircle, Eye, Clock } from "lucide-react";
 
 import { useToast } from "@/components/ui/use-toast";
-import { getAllStores, moderateStore } from "@/Redux Toolkit/features/store/storeThunks";
+import {
+  getAllStoresPaged,
+  moderateStore,
+} from "@/Redux Toolkit/features/store/storeThunks";
 import { formatDateTime } from "@/utils/formateDate";
+import DataTablePagination from "@/components/ui/data-table-pagination";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 
 export default function PendingRequestsPage() {
   const dispatch = useDispatch();
-  const { stores, loading, error } = useSelector((state) => state.store);
-  const pendingStores = (stores || []).filter(
-    (s) => String(s.status || "").toUpperCase() === "PENDING",
-  );
+  const {
+    pagedStores,
+    pagedLoading: loading,
+    error,
+  } = useSelector((state) => state.store);
+  const pendingStores = pagedStores?.content || [];
+  const totalElements = pagedStores?.totalElements ?? 0;
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [rejectionDialogOpen, setRejectionDialogOpen] = useState(false);
@@ -39,9 +49,26 @@ export default function PendingRequestsPage() {
   const [updatingId, setUpdatingId] = useState(null);
   const { toast } = useToast();
 
+  const fetchPendingStores = useCallback(() => {
+    dispatch(
+      getAllStoresPaged({
+        status: "PENDING",
+        page,
+        size: pageSize,
+        sortBy: "createdAt",
+        sortDir: "desc",
+      }),
+    );
+  }, [dispatch, page, pageSize]);
+
   useEffect(() => {
-    dispatch(getAllStores("PENDING"));
-  }, [dispatch]);
+    fetchPendingStores();
+  }, [fetchPendingStores]);
+
+  const handlePageSizeChange = (newSize) => {
+    setPageSize(newSize);
+    setPage(0);
+  };
 
   const handleApprove = (store) => {
     setSelectedRequest(store);
@@ -57,15 +84,24 @@ export default function PendingRequestsPage() {
     if (selectedRequest) {
       setUpdatingId(selectedRequest.id);
       try {
-        await dispatch(moderateStore({ storeId: selectedRequest.id, action: "ACTIVE" })).unwrap();
+        await dispatch(
+          moderateStore({ storeId: selectedRequest.id, action: "ACTIVE" }),
+        ).unwrap();
         toast({
           title: "Store Approved",
           description: `${selectedRequest.brand} has been approved successfully.`,
         });
+        if (pendingStores.length === 1 && page > 0) {
+          setPage((prev) => Math.max(0, prev - 1));
+        } else {
+          fetchPendingStores();
+        }
       } catch (e) {
         toast({
           title: "Approval Failed",
-          description: (typeof e === "string" ? e : e?.message) || "Failed to approve store.",
+          description:
+            (typeof e === "string" ? e : e?.message) ||
+            "Failed to approve store.",
           variant: "destructive",
         });
       } finally {
@@ -91,10 +127,17 @@ export default function PendingRequestsPage() {
           title: "Store Rejected",
           description: `${selectedRequest.brand} has been rejected.`,
         });
+        if (pendingStores.length === 1 && page > 0) {
+          setPage((prev) => Math.max(0, prev - 1));
+        } else {
+          fetchPendingStores();
+        }
       } catch (e) {
         toast({
           title: "Rejection Failed",
-          description: (typeof e === "string" ? e : e?.message) || "Failed to reject store.",
+          description:
+            (typeof e === "string" ? e : e?.message) ||
+            "Failed to reject store.",
           variant: "destructive",
         });
       } finally {
@@ -105,8 +148,6 @@ export default function PendingRequestsPage() {
       }
     }
   };
-
-
 
   return (
     <div className="space-y-6">
@@ -119,7 +160,7 @@ export default function PendingRequestsPage() {
         </div>
         <Badge variant="secondary" className="flex items-center gap-1">
           <Clock className="w-3 h-3" />
-          {pendingStores.length} Pending
+          {totalElements} Pending
         </Badge>
       </div>
 
@@ -142,7 +183,7 @@ export default function PendingRequestsPage() {
                     <TableHead>Contact</TableHead>
                     <TableHead>Business Type</TableHead>
                     <TableHead>Submitted On</TableHead>
-                   
+
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -154,15 +195,16 @@ export default function PendingRequestsPage() {
                       <TableCell>
                         <div className="text-sm">
                           <div>{store.contact?.phone}</div>
-                          <div className="text-muted-foreground">{store.contact?.email}</div>
+                          <div className="text-muted-foreground">
+                            {store.contact?.email}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>{store.storeType || "-"}</TableCell>
                       <TableCell>{formatDateTime(store.createdAt)}</TableCell>
-                 
+
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          
                           <Button
                             variant="outline"
                             size="sm"
@@ -197,6 +239,19 @@ export default function PendingRequestsPage() {
               No pending requests at the moment.
             </div>
           )}
+
+          <DataTablePagination
+            page={pagedStores?.pageNumber ?? page}
+            pageSize={pagedStores?.pageSize ?? pageSize}
+            totalElements={totalElements}
+            totalPages={pagedStores?.totalPages ?? 0}
+            currentCount={pendingStores.length}
+            onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+            loading={loading}
+            itemLabel="requests"
+            className="mt-4"
+          />
         </CardContent>
       </Card>
 
@@ -206,14 +261,22 @@ export default function PendingRequestsPage() {
           <DialogHeader>
             <DialogTitle>Approve Store Registration</DialogTitle>
             <DialogDescription>
-              Are you sure you want to approve {selectedRequest?.brand}? This will activate their account and allow them to start using the platform.
+              Are you sure you want to approve {selectedRequest?.brand}? This
+              will activate their account and allow them to start using the
+              platform.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setApprovalDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setApprovalDialogOpen(false)}
+            >
               Cancel
             </Button>
-            <Button onClick={confirmApprove} className="bg-green-600 hover:bg-green-700">
+            <Button
+              onClick={confirmApprove}
+              className="bg-green-600 hover:bg-green-700"
+            >
               <CheckCircle className="w-4 h-4 mr-2" />
               Approve Store
             </Button>
@@ -227,7 +290,8 @@ export default function PendingRequestsPage() {
           <DialogHeader>
             <DialogTitle>Reject Store Registration</DialogTitle>
             <DialogDescription>
-              Please provide a reason for rejecting {selectedRequest?.brand}. This will be communicated to the store owner.
+              Please provide a reason for rejecting {selectedRequest?.brand}.
+              This will be communicated to the store owner.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -239,7 +303,10 @@ export default function PendingRequestsPage() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectionDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setRejectionDialogOpen(false)}
+            >
               Cancel
             </Button>
             <Button
@@ -255,4 +322,4 @@ export default function PendingRequestsPage() {
       </Dialog>
     </div>
   );
-} 
+}

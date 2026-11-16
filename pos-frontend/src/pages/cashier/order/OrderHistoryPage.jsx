@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router";
 import { Input } from "@/components/ui/input";
@@ -20,12 +20,48 @@ import {
   RefreshCw,
   Download,
 } from "lucide-react";
-import { getOrdersByCashier } from "@/Redux Toolkit/features/order/orderThunks";
+import { getOrdersByCashierPaged } from "@/Redux Toolkit/features/order/orderThunks";
+import DataTablePagination from "@/components/ui/data-table-pagination";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 import { useSidebar } from "../../../context/hooks/useSidebar";
 import OrderDetails from "./OrderDetails/OrderDetails";
 import OrderTable from "./OrderTable";
 import { handleDownloadOrderPDF, handlePrintOrderPDF } from "./pdf/pdfUtils";
 import UserProfileMenu from "@/components/account/UserProfileMenu";
+
+const toLocalIsoDate = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const resolveDateBounds = (dateFilter, customDateRange) => {
+  const now = new Date();
+  const todayStr = toLocalIsoDate(now);
+  if (dateFilter === "today") {
+    return { startDate: todayStr, endDate: todayStr };
+  }
+  if (dateFilter === "week") {
+    const weekStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - now.getDay()
+    );
+    return { startDate: toLocalIsoDate(weekStart), endDate: todayStr };
+  }
+  if (dateFilter === "month") {
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { startDate: toLocalIsoDate(monthStart), endDate: todayStr };
+  }
+  if (dateFilter === "custom") {
+    return {
+      startDate: customDateRange.start || undefined,
+      endDate: customDateRange.end || undefined,
+    };
+  }
+  return { startDate: undefined, endDate: undefined };
+};
 
 const OrderHistoryPage = () => {
   const { setSidebarOpen } = useSidebar();
@@ -33,22 +69,67 @@ const OrderHistoryPage = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { userProfile } = useSelector((state) => state.user);
-  const { orders = [], loading, error } = useSelector((state) => state.order);
+  const {
+    pagedCashierOrders,
+    pagedCashierLoading: loading,
+    error,
+  } = useSelector((state) => state.order);
+  const orders = pagedCashierOrders?.content || [];
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
   const [customDateRange, setCustomDateRange] = useState({
     start: "",
     end: "",
   });
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [showOrderDetailsDialog, setShowOrderDetailsDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   useEffect(() => {
-    if (userProfile?.id) {
-      dispatch(getOrdersByCashier(userProfile.id));
-    }
-  }, [dispatch, userProfile?.id]);
+    const next = searchTerm.trim();
+    if (next === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setPage(0);
+      setDebouncedSearch(next);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearch]);
+
+  const dateBounds = useMemo(
+    () => resolveDateBounds(dateFilter, customDateRange),
+    [dateFilter, customDateRange]
+  );
+
+  const fetchPagedOrders = useCallback(() => {
+    if (!userProfile?.id) return;
+    dispatch(
+      getOrdersByCashierPaged({
+        cashierId: userProfile.id,
+        keyword: debouncedSearch,
+        startDate: dateBounds.startDate,
+        endDate: dateBounds.endDate,
+        page,
+        size: pageSize,
+        sortBy: "createdAt",
+        sortDir: "desc",
+      })
+    );
+  }, [
+    dispatch,
+    userProfile?.id,
+    debouncedSearch,
+    dateBounds.startDate,
+    dateBounds.endDate,
+    page,
+    pageSize,
+  ]);
+
+  useEffect(() => {
+    fetchPagedOrders();
+  }, [fetchPagedOrders]);
 
   useEffect(() => {
     if (error) {
@@ -60,55 +141,24 @@ const OrderHistoryPage = () => {
     }
   }, [error, toast]);
 
-  // Filter orders by search term and date filter
-  const filteredOrders = useMemo(() => {
-    const now = new Date();
-    const todayStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-    );
-    const weekStart = new Date(todayStart);
-    weekStart.setDate(todayStart.getDate() - todayStart.getDay());
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+  };
 
-    return (orders || []).filter((order) => {
-      const q = searchTerm.trim().toLowerCase();
-      const matchesSearch =
-        !q ||
-        String(order.id).toLowerCase().includes(q) ||
-        (order.customer?.fullName || "Walk-in Customer")
-          .toLowerCase()
-          .includes(q) ||
-        (order.customer?.phone || "").toLowerCase().includes(q);
+  const handleDateFilterChange = (nextFilter) => {
+    setDateFilter(nextFilter);
+    setPage(0);
+  };
 
-      if (!matchesSearch) return false;
-      if (dateFilter === "all") return true;
+  const handleCustomDateChange = (patch) => {
+    setCustomDateRange((prev) => ({ ...prev, ...patch }));
+    setPage(0);
+  };
 
-      const orderDate = order.createdAt ? new Date(order.createdAt) : null;
-      if (!orderDate || isNaN(orderDate.getTime())) return true;
-
-      if (dateFilter === "today") {
-        return orderDate >= todayStart;
-      }
-      if (dateFilter === "week") {
-        return orderDate >= weekStart;
-      }
-      if (dateFilter === "month") {
-        return orderDate >= monthStart;
-      }
-      if (dateFilter === "custom") {
-        const startOk =
-          !customDateRange.start ||
-          orderDate >= new Date(`${customDateRange.start}T00:00:00`);
-        const endOk =
-          !customDateRange.end ||
-          orderDate <= new Date(`${customDateRange.end}T23:59:59`);
-        return startOk && endOk;
-      }
-      return true;
-    });
-  }, [orders, searchTerm, dateFilter, customDateRange]);
+  const handlePageSizeChange = (nextSize) => {
+    setPageSize(nextSize);
+    setPage(0);
+  };
 
   const handleViewOrder = (order) => {
     setSelectedOrder(order);
@@ -146,7 +196,7 @@ const OrderHistoryPage = () => {
 
   const handleRefreshOrders = () => {
     if (userProfile?.id) {
-      dispatch(getOrdersByCashier(userProfile.id));
+      fetchPagedOrders();
       toast({
         title: "Refreshing Orders",
         description: "Orders are being refreshed...",
@@ -205,7 +255,7 @@ const OrderHistoryPage = () => {
                 placeholder="Search by order ID, customer name, or phone..."
                 className="pl-10"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={handleSearchChange}
               />
             </div>
           </div>
@@ -213,31 +263,31 @@ const OrderHistoryPage = () => {
           <div className="flex flex-wrap gap-2">
             <Button
               variant={dateFilter === "all" ? "default" : "outline"}
-              onClick={() => setDateFilter("all")}
+              onClick={() => handleDateFilterChange("all")}
             >
               All
             </Button>
             <Button
               variant={dateFilter === "today" ? "default" : "outline"}
-              onClick={() => setDateFilter("today")}
+              onClick={() => handleDateFilterChange("today")}
             >
               Today
             </Button>
             <Button
               variant={dateFilter === "week" ? "default" : "outline"}
-              onClick={() => setDateFilter("week")}
+              onClick={() => handleDateFilterChange("week")}
             >
               This Week
             </Button>
             <Button
               variant={dateFilter === "month" ? "default" : "outline"}
-              onClick={() => setDateFilter("month")}
+              onClick={() => handleDateFilterChange("month")}
             >
               This Month
             </Button>
             <Button
               variant={dateFilter === "custom" ? "default" : "outline"}
-              onClick={() => setDateFilter("custom")}
+              onClick={() => handleDateFilterChange("custom")}
             >
               <CalendarIcon className="h-4 w-4 mr-2" />
               Custom
@@ -254,10 +304,7 @@ const OrderHistoryPage = () => {
                 type="date"
                 value={customDateRange.start}
                 onChange={(e) =>
-                  setCustomDateRange({
-                    ...customDateRange,
-                    start: e.target.value,
-                  })
+                  handleCustomDateChange({ start: e.target.value })
                 }
               />
             </div>
@@ -268,16 +315,16 @@ const OrderHistoryPage = () => {
                 type="date"
                 value={customDateRange.end}
                 onChange={(e) =>
-                  setCustomDateRange({
-                    ...customDateRange,
-                    end: e.target.value,
-                  })
+                  handleCustomDateChange({ end: e.target.value })
                 }
               />
             </div>
             <Button
               variant="outline"
-              onClick={() => setCustomDateRange({ start: "", end: "" })}
+              onClick={() => {
+                setCustomDateRange({ start: "", end: "" });
+                setPage(0);
+              }}
             >
               Clear
             </Button>
@@ -291,13 +338,26 @@ const OrderHistoryPage = () => {
             <Loader2 className="animate-spin h-16 w-16 text-primary" />
             <p className="mt-4">Loading orders...</p>
           </div>
-        ) : filteredOrders.length > 0 ? (
-          <OrderTable
-            orders={filteredOrders}
-            handleInitiateReturn={handleInitiateReturn}
-            handlePrintInvoice={handlePrintInvoice}
-            handleViewOrder={handleViewOrder}
-          />
+        ) : orders.length > 0 ? (
+          <div className="rounded-md border bg-card">
+            <OrderTable
+              orders={orders}
+              handleInitiateReturn={handleInitiateReturn}
+              handlePrintInvoice={handlePrintInvoice}
+              handleViewOrder={handleViewOrder}
+            />
+            <DataTablePagination
+              page={pagedCashierOrders?.pageNumber ?? page}
+              pageSize={pagedCashierOrders?.pageSize ?? pageSize}
+              totalElements={pagedCashierOrders?.totalElements ?? 0}
+              totalPages={pagedCashierOrders?.totalPages ?? 0}
+              currentCount={orders.length}
+              onPageChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
+              loading={loading}
+              itemLabel="orders"
+            />
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
             <SearchIcon size={48} strokeWidth={1} />

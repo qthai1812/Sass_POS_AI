@@ -3,6 +3,8 @@ import {
   createStore,
   getStoreById,
   getAllStores,
+  getAllStoresPaged,
+  getStoreSummary,
   updateStore,
   deleteStore,
   getStoreByAdmin,
@@ -11,10 +13,24 @@ import {
   addEmployee,
   moderateStore,
 } from "./storeThunks";
+import { normalizePageResponse } from "@/utils/paginationUtils";
+
+const createEmptyStorePage = () => normalizePageResponse(null);
 
 const initialState = {
   store: null,
   stores: [],
+  pagedStores: createEmptyStorePage(),
+  pagedLoading: false,
+  storeSummary: {
+    totalStores: 0,
+    activeStores: 0,
+    pendingStores: 0,
+    blockedStores: 0,
+    rejectedStores: 0,
+    averageCommissionRate: 0,
+    totalEarnings: 0,
+  },
   employees: [],
   loading: false,
   error: null,
@@ -26,6 +42,7 @@ const storeSlice = createSlice({
   reducers: {
     clearStoreState: (state) => {
       state.store = null;
+      state.pagedStores = createEmptyStorePage();
       state.error = null;
       state.employees = [];
     },
@@ -49,9 +66,37 @@ const storeSlice = createSlice({
       .addCase(getAllStores.fulfilled, (state, action) => {
         state.stores = action.payload;
       })
+      .addCase(getAllStoresPaged.pending, (state) => {
+        state.pagedLoading = true;
+        state.error = null;
+      })
+      .addCase(getAllStoresPaged.fulfilled, (state, action) => {
+        state.pagedLoading = false;
+        state.pagedStores = normalizePageResponse(action.payload);
+      })
+      .addCase(getAllStoresPaged.rejected, (state, action) => {
+        state.pagedLoading = false;
+        state.error = action.payload;
+      })
+      .addCase(getStoreSummary.fulfilled, (state, action) => {
+        if (action.payload) {
+          state.storeSummary = {
+            totalStores: Number(action.payload.totalStores || 0),
+            activeStores: Number(action.payload.activeStores || 0),
+            pendingStores: Number(action.payload.pendingStores || 0),
+            blockedStores: Number(action.payload.blockedStores || 0),
+            rejectedStores: Number(action.payload.rejectedStores || 0),
+            averageCommissionRate: Number(action.payload.averageCommissionRate || 0),
+            totalEarnings: Number(action.payload.totalEarnings || 0),
+          };
+        }
+      })
       .addCase(updateStore.fulfilled, (state, action) => {
         state.store = action.payload;
         state.stores = state.stores.map((store) =>
+          store.id === action.payload.id ? action.payload : store,
+        );
+        state.pagedStores.content = state.pagedStores.content.map((store) =>
           store.id === action.payload.id ? action.payload : store,
         );
       })
@@ -59,6 +104,9 @@ const storeSlice = createSlice({
         const deletedId = action.payload?.id;
         if (deletedId) {
           state.stores = state.stores.filter((store) => store.id !== deletedId);
+          state.pagedStores.content = state.pagedStores.content.filter(
+            (store) => store.id !== deletedId,
+          );
           if (state.store?.id === deletedId) {
             state.store = null;
           }
@@ -97,6 +145,9 @@ const storeSlice = createSlice({
       .addCase(moderateStore.fulfilled, (state, action) => {
         const updated = action.payload;
         state.stores = state.stores.map((store) =>
+          store.id === updated.id ? updated : store,
+        );
+        state.pagedStores.content = state.pagedStores.content.map((store) =>
           store.id === updated.id ? updated : store,
         );
       })

@@ -196,3 +196,38 @@ export const searchProducts = createAsyncThunk(
     }
   },
 );
+
+// 🔹 Get products by store (Paged, server-side search & category filter)
+export const getProductsByStorePaged = createAsyncThunk(
+  "product/getByStorePaged",
+  async (
+    {
+      storeId,
+      keyword = "",
+      categoryId,
+      page = 0,
+      size = 10,
+      sortBy = "createdAt",
+      sortDir = "desc",
+    },
+    { rejectWithValue },
+  ) => {
+    try {
+      const headers = getAuthHeaders();
+      const params = { page, size, sortBy, sortDir };
+      if (keyword && keyword.trim()) params.keyword = keyword.trim();
+      if (categoryId != null && categoryId !== "" && categoryId !== "all") {
+        params.categoryId = categoryId;
+      }
+      const res = await api.get(`/api/products/store/${storeId}/paged`, {
+        headers,
+        params,
+      });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch paged products",
+      );
+    }
+  },
+);

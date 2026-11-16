@@ -10,7 +10,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { getProductsByStore } from "@/Redux Toolkit/features/product/productThunks";
+import { getProductsByStorePaged } from "@/Redux Toolkit/features/product/productThunks";
+import DataTablePagination from "@/components/ui/data-table-pagination";
+import { DEFAULT_PAGE_SIZE } from "@/utils/paginationUtils";
 import { toast } from "@/components/ui/use-toast";
 import usePlanEntitlements from "@/hooks/usePlanEntitlements";
 import ProductTable from "./ProductTable";
@@ -20,27 +22,50 @@ import ProductDetails from "./ProductDetails";
 
 export default function Products() {
   const dispatch = useDispatch();
-  const { products, loading, error, searchResults } = useSelector(
+  const { pagedProducts, pagedLoading: loading, error } = useSelector(
     (state) => state.product,
   );
+  const displayedProducts = pagedProducts?.content || [];
   const { store } = useSelector((state) => state.store);
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [currentProduct, setCurrentProduct] = useState(null);
-  const [displayedProducts, setDisplayedProducts] = useState([]);
-  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedKeyword, setDebouncedKeyword] = useState("");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [refreshing, setRefreshing] = useState(false);
   const { entitlements, refresh: refreshEntitlements } = usePlanEntitlements();
   const isProductLimitReached =
     entitlements?.maxProducts != null &&
     entitlements?.usedProducts >= entitlements?.maxProducts;
+  const isSearchActive = Boolean(debouncedKeyword);
+
+  useEffect(() => {
+    const next = searchQuery.trim();
+    if (next === debouncedKeyword) return;
+    const timer = setTimeout(() => {
+      setPage(0);
+      setDebouncedKeyword(next);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery, debouncedKeyword]);
 
   const fetchProducts = useCallback(async () => {
     if (!store?.id) return;
     try {
-      await dispatch(getProductsByStore(store.id)).unwrap();
+      await dispatch(
+        getProductsByStorePaged({
+          storeId: store.id,
+          keyword: debouncedKeyword,
+          page,
+          size: pageSize,
+          sortBy: "createdAt",
+          sortDir: "desc",
+        }),
+      ).unwrap();
     } catch (err) {
       toast({
         title: "Error",
@@ -48,37 +73,41 @@ export default function Products() {
         variant: "destructive",
       });
     }
-  }, [dispatch, store?.id]);
+  }, [dispatch, store?.id, debouncedKeyword, page, pageSize]);
 
-  // Fetch products on mount or when store changes
   useEffect(() => {
-    if (store?.id) {
-      fetchProducts();
-    }
-  }, [fetchProducts, store?.id]);
-
-  // Update displayed products when products or search results change
-  useEffect(() => {
-    setDisplayedProducts(
-      isSearchActive ? (searchResults || []) : (products || []),
-    );
-  }, [products, searchResults, isSearchActive]);
+    fetchProducts();
+  }, [fetchProducts]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchProducts();
     setRefreshing(false);
-    setIsSearchActive(false);
   };
 
   const handleAddProductSuccess = () => {
     setIsAddDialogOpen(false);
     refreshEntitlements();
+    if (page !== 0) {
+      setPage(0);
+    } else {
+      fetchProducts();
+    }
   };
 
   const handleEditProductSuccess = () => {
     setIsEditDialogOpen(false);
     setCurrentProduct(null);
+    fetchProducts();
+  };
+
+  const handleProductDeleted = () => {
+    refreshEntitlements();
+    if (displayedProducts.length === 1 && page > 0) {
+      setPage((prev) => Math.max(0, prev - 1));
+    } else {
+      fetchProducts();
+    }
   };
 
   const openEditDialog = (product) => {
@@ -91,14 +120,20 @@ export default function Products() {
     setIsViewDialogOpen(true);
   };
 
-  const handleSearch = (results) => {
-    if (results === null) {
-      // Search was cleared
-      setIsSearchActive(false);
-    } else {
-      setIsSearchActive(true);
-      setDisplayedProducts(results);
+  const handleSearchSubmit = (kw) => {
+    const next = kw ? String(kw).trim() : "";
+    if (next !== debouncedKeyword) {
+      setPage(0);
+      setDebouncedKeyword(next);
     }
+    if (!next) {
+      setSearchQuery("");
+    }
+  };
+
+  const handlePageSizeChange = (nextSize) => {
+    setPageSize(nextSize);
+    setPage(0);
   };
 
   return (
@@ -132,7 +167,12 @@ export default function Products() {
       </div>
 
       <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
-        <ProductSearch onSearch={handleSearch} />
+        <ProductSearch
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onSearch={handleSearchSubmit}
+          isSearching={loading}
+        />
 
         <Button
           variant="outline"
@@ -150,13 +190,13 @@ export default function Products() {
       {isSearchActive && (
         <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-md flex justify-between items-center">
           <span>
-            Showing search results ({displayedProducts.length}{" "}
-            {displayedProducts.length === 1 ? "product" : "products"} found)
+            Showing search results for "{debouncedKeyword}" ({pagedProducts?.totalElements ?? displayedProducts.length}{" "}
+            {(pagedProducts?.totalElements ?? displayedProducts.length) === 1 ? "product" : "products"} found)
           </span>
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setIsSearchActive(false)}
+            onClick={() => handleSearchSubmit(null)}
             className="text-amber-800 hover:text-amber-900 hover:bg-amber-100"
           >
             Show all products
@@ -177,8 +217,20 @@ export default function Products() {
             loading={loading || refreshing}
             onEdit={openEditDialog}
             onView={openViewDialog}
+            onDeleted={handleProductDeleted}
           />
         </CardContent>
+        <DataTablePagination
+          page={pagedProducts?.pageNumber ?? page}
+          pageSize={pagedProducts?.pageSize ?? pageSize}
+          totalElements={pagedProducts?.totalElements ?? 0}
+          totalPages={pagedProducts?.totalPages ?? 0}
+          currentCount={displayedProducts.length}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+          loading={loading || refreshing}
+          itemLabel="products"
+        />
       </Card>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
